@@ -8,9 +8,6 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
-# Existing patch modules remain runnable as individual development tools.
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
 TITLE_ID = "0004000000030100"
 CODE_SHA256 = "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
 
@@ -23,17 +20,17 @@ def verify_build(path: Path) -> str:
 
 
 def modules():
-    import patch_60fps as fps
-    import patch_widescreen as wide
-    import patch_aim_request as aim
-    import pin_reticle as pin
-    import menu_render_pass as menu
+    from .patches import patch_60fps as fps
+    from .patches import patch_widescreen as wide
+    from .patches import patch_aim_request as aim
+    from .patches import pin_reticle as pin
+    from .experimental import menu_render_pass as menu
     return {"fps": fps, "wide": wide, "aim": aim, "pin": pin, "menu": menu}
 
 
 @contextmanager
 def guest_session(port: int):
-    from gdbclient import GdbClient
+    from .gdbclient import GdbClient
     gdb = GdbClient(port=port, timeout=20)
     try:
         stop = gdb.send("?")
@@ -126,9 +123,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.command == "aim":
                 if sys.platform != "win32":
                     raise RuntimeError("the current mouse helper requires Windows; cheats do not")
-                from native_fps_aim import main as run
+                from .backends.windows.native_fps_aim import main as run
             else:
-                from export_gateway_cheats import main as run
+                from .export_cheats import main as run
             return run(options)
         else:
             print(json.dumps(runtime_command(args), indent=2))

@@ -29,6 +29,7 @@ class ReleaseTests(unittest.TestCase):
             root = Path(directory)
             fixture(root)
             for name in ("local/private-config.json", "local/game.cci", "docs/old.md",
+                         "docs/CLEANUP.md", "tools/kiu_cli.py",
                          "tools/obsolete.py", "tools/rogue.dll", "tests/game.bin",
                          "tools/__pycache__/cache.pyc", "archive/private.txt"):
                 path = root / name
@@ -37,6 +38,10 @@ class ReleaseTests(unittest.TestCase):
             files = release.release_files(root, cheat_generator=cheats)
             self.assertTrue(all(not name.startswith(("local/", "archive/")) for name in files))
             self.assertNotIn("tools/obsolete.py", files)
+            self.assertNotIn("tools/kiu_cli.py", files)
+            self.assertNotIn("docs/CLEANUP.md", files)
+            self.assertIn("src/kiu/cli.py", files)
+            self.assertIn("tools/dev/prepare_kiu.py", files)
             self.assertNotIn("tools/rogue.dll", files)
             self.assertNotIn("tests/game.bin", files)
             self.assertIn(f"cheats/{release.TITLE_ID}.txt", files)

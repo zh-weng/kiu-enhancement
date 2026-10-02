@@ -10,10 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import struct
 
-try:  # Running as ``python -m tools...``.
-    from .lz11 import decompress as lz11_decompress
-except ImportError:  # Running the script directly from the tools directory.
-    from lz11 import decompress as lz11_decompress
+from .lz11 import decompress as lz11_decompress
 
 
 class AssetFormatError(ValueError):

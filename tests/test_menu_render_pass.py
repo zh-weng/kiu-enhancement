@@ -9,9 +9,9 @@ from capstone import CS_ARCH_ARM, CS_MODE_ARM, Cs
 from capstone.arm import ARM_OP_IMM
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import menu_render_pass as patch  # noqa: E402
+from kiu.experimental import menu_render_pass as patch  # noqa: E402
 
 
 class FakeGdb:

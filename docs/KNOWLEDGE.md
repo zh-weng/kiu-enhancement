@@ -40,7 +40,7 @@ rodata 为 `0x00C96000/0x0009B990`；data 为 `0x00D32000/0x00031C78`。
 
 ## 2. 真 60 FPS：解锁调度，同时保持游戏时间
 
-实现：`tools/patch_60fps.py`；回归：`tests/test_patch_60fps.py`。
+实现：`src/kiu/patches/patch_60fps.py`；回归：`tests/test_patch_60fps.py`。
 `*0x00D63824` 指向 scheduler，`+0x50` 的名义值必须是 30；
 `+0x54` 的 stock interval 是 2，补丁改为 0，让完整帧管线每周期运行。
 这个 scheduler 字段不能孤立写入：只解锁会令仍按 30 Hz 计时的系统加速。
@@ -59,7 +59,7 @@ rodata 为 `0x00C96000/0x0009B990`；data 为 `0x00D32000/0x00031C78`。
 
 ## 3. 宽屏：改变透视，不是拉伸完成帧
 
-实现：`tools/patch_widescreen.py`；回归：`tests/test_patch_widescreen.py`。
+实现：`src/kiu/patches/patch_widescreen.py`；回归：`tests/test_patch_widescreen.py`。
 两处上传尾部原指令是 `ldr r0,[r5]`；`r0` 指向 PICA uniform command block。
 横向系数在 `+0x28`，纵向系数在 `+0x14`，`+0x40` 的精确 `-1.0f` 标识透视。
 hook 先检查透视 marker，再以原始 X/Y 比例阈值区分上/下屏分支。
@@ -76,7 +76,8 @@ hook 先检查透视 marker，再以原始 X/Y 比例阈值区分上/下屏分�
 
 ## 4. 原生鼠标：陆战转相机，空战移准星
 
-实现：`tools/native_fps_aim.py`、`patch_aim_request.py`、`pin_reticle.py`。
+实现：`src/kiu/backends/windows/native_fps_aim.py`、
+`src/kiu/patches/patch_aim_request.py`、`src/kiu/patches/pin_reticle.py`。
 `A` 是准星对象；`P` 是相机 controller。hook 动态记录指针，不采用固定运行时对象地址。
 
 ### 陆战调用链
@@ -116,7 +117,7 @@ auto 依据 reticle 调用活动与记录的 controller 切换 look/point；暂�
 
 ### mailbox ABI 1
 
-定义：`tools/aim_protocol.py`、`manifests/aim_protocol.json`；字段全为小端 u32 / binary32。
+定义：`src/kiu/aim_protocol.py`、`manifests/aim_protocol.json`；字段全为小端 u32 / binary32。
 地址都是 guest VA。魔数和版本不匹配应停止，不得把宿主 native pointer 放进 ABI。
 
 | mailbox | 地址 / 大小 | 头部及宿主字段 | 客体写入字段 |
@@ -132,7 +133,7 @@ reticle mode：0=只观测，1=中心，2=宿主位置。ground gate：0=游戏�
 
 ## 5. 菜单移上屏：render-pass 的目标字段
 
-实现：`tools/menu_render_pass.py`；回归：`tests/test_menu_render_pass.py`。
+实现：`src/kiu/experimental/menu_render_pass.py`；回归：`tests/test_menu_render_pass.py`。
 `*0x00D636BC` 是 UI manager；`uiMgr+0x140` 是战斗 HUD 指针，**不是屏幕编号**。
 代码 `FUN_00A33CB4` 先检查 `uiMgr+0xC0 & 2` 与该指针，
 screen=0 调 `FUN_0060D39C/FUN_0060D3EC`，screen=1 转 `FUN_0060D93C`。
@@ -156,7 +157,7 @@ post 同样 resolve target 0，关闭 marker，马上把 width 恢复 320。
 
 ## 6. 俯仰实验的边界
 
-`tools/patch_pitch_limit.py` 修改 `0x00746650/54` 的 ±1.39626336 rad literal，
+`src/kiu/experimental/patch_pitch_limit.py` 修改 `0x00746650/54` 的 ±1.39626336 rad literal，
 并将 `0x00746504/0x00746518` 的条件 VFP move 改成无条件。
 只改 literal 不足：每次调用还有动态上下界，literal 只是上限。
 修改这些 move 也不证明最后渲染视角达到目标值；下游 limiter 和相机 basis 需独立验证。
@@ -171,7 +172,7 @@ GDB 负责停 guest、验证原字节与空 cave、写 hook、初始化关闭状
 [官方 GDB WriteMemory](https://github.com/azahar-emu/azahar/blob/2126.1.2/src/core/gdbstub/gdbstub.cpp)
 会清 CPU 指令缓存，因此代码安装应走该类通道，高频 mailbox 不宜照用。
 
-平台无关层是 `aim_core.py` 与 `aim_protocol.py`：
+平台无关层是 `src/kiu/aim_core.py` 与 `src/kiu/aim_protocol.py`：
 `MemoryTransport` 提供精确 guest 数据读写与 close；`InputSource` 提供相对设备 counts 与生命周期；
 `WindowContext` 提供焦点、同一物理像素坐标系、viewport 或未知值。
 输入回调不做 transport I/O，未知 viewport 不猜布局，接口不公开 Win32 句柄。
@@ -193,7 +194,8 @@ BPS 不能省略 runtime scheduler 和 mailbox 管理；不分发修改后的完
 
 ## 8. CCI / ExeFS 提取与验证
 
-实现：`tools/prepare_kiu.py`；输入是用户提供的已解密 NoCrypto CCI，不是解密器。
+实现：`tools/dev/prepare_kiu.py`，入口 `python -m tools.dev.prepare_kiu`；
+输入是用户提供的已解密 NoCrypto CCI，不是解密器。
 NCSD magic 在 `0x100`，分区表从 `0x120` 开始；分区0基址=表中 offset × `0x200`。
 NCCH 外层 section offset/size 也是 `0x200` media units。
 **ExeFS 内部 entry offset 是字节**：payload=`ExeFS base+0x200+entry offset`，不能再乘单位。
@@ -208,7 +210,8 @@ ExeFS superblock hash 覆盖其首 `0x200`。输出再记录 source/code SHA256 
 
 ## 9. 资产格式：能够解析什么，不能推断什么
 
-实现：`kiu_assets.py`、`lz11.py`、`extract_kiu_textures.py`；回归：`test_asset_formats.py`。
+实现：`tools/dev/` 下的 `kiu_assets.py`、`lz11.py`、`extract_kiu_textures.py`；
+回归：`tests/test_asset_formats.py`。脚本使用 `python -m tools.dev.<模块名>`。
 有效链为 raw DARC / LZ11-wrapped DARC → nested DARC → CGFX DICT/TXOB texture。
 DARC file offset 从 archive 起点算，不能再加 data offset；目录是 pre-order subtree 的 exclusive-end index。
 CGFX relative offset 从存放该 offset 的字段地址算，不统一从文件头算。
@@ -225,15 +228,17 @@ LA4/L4/A4、ETC1/ETC1A4，处理 8×8 tile swizzle，输出 RGBA；`--flip-y` �
 ## 10. 如何复查与继续研究
 
 `python -m unittest discover -s tests` 应在无 ROM checkout 运行；私人 code image 存在时增加原字节/hash检查。
-`python kiu.py verify-build local/extracted/exefs_code.bin` 验证用户自己的完整 code hash。
-`python kiu.py export-cheats -- --verify-code local/extracted/exefs_code.bin` 可同时验证导出元数据。
+`python run_kiu.py verify-build local/extracted/exefs_code.bin` 验证用户自己的完整 code hash。
+`python run_kiu.py export-cheats -- --verify-code local/extracted/exefs_code.bin` 可同时验证导出元数据。
 金手指只负责 guest 改动，不能读取宿主鼠标；取消勾选不会自动撤销内存写入，应单独执行 Restore。
 同一补丁不能同时由循环金手指与 companion 管理，未知/混合字节要拒绝覆盖。
 
-`inspect_arm_static.py` 和 `find_arm_mem_refs.py` 先验代码 hash，再输出原字节与候选。
+`python -m tools.dev.inspect_arm_static` 和 `python -m tools.dev.find_arm_mem_refs`
+先验代码 hash，再输出原字节与候选。
 ARM PC-relative 地址按 `instruction VA+8` 计算；前者 direct-call 搜索只枚举 unconditional ARM BL。
 后者独立解码每个 word，可能把 literal 解成指令；相同 displacement 不证明同一对象或实际执行。
-`armscan.py` 跟直接分支但不是完整 CFG：不自验构建、有限窗口、不追 indirect/jumptable 或进入 callees。
+`python -m tools.dev.armscan` 跟直接分支但不是完整 CFG：
+不自验构建、有限窗口、不追 indirect/jumptable 或进入 callees。
 线性反汇编可能跨函数/数据、漏多出口；不匹配的 push/pop 是警报，不是唯一原因的证明。
 
 修复必须比较相同输入与状态的 Azahar baseline，找最早分歧而非只解释最终画面。

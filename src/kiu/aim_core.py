@@ -7,10 +7,7 @@ from __future__ import annotations
 
 import struct
 
-try:
-    from .aim_protocol import MemoryTransport, RETICLE
-except ImportError:  # direct script-style imports used by the Windows adapter
-    from aim_protocol import MemoryTransport, RETICLE
+from .aim_protocol import MemoryTransport, RETICLE
 
 # Public little-endian mailbox ABI 1 offsets, not native process pointers.
 RETICLE_CONTROLLER_OFFSET = 0x18

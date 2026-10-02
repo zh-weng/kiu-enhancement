@@ -8,7 +8,7 @@ import struct
 import tempfile
 import unittest
 
-from tools import prepare_kiu as prepare
+from tools.dev import prepare_kiu as prepare
 
 
 def container(code=b"\x1e\xff\x2f\xe1", *, compressed=False, bad_superblock=False):

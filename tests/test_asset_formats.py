@@ -1,8 +1,8 @@
 import struct
 import unittest
 
-from tools.kiu_assets import decode_pica_texture, iter_cgfx_textures, iter_darc
-from tools.lz11 import decompress
+from tools.dev.kiu_assets import decode_pica_texture, iter_cgfx_textures, iter_darc
+from tools.dev.lz11 import decompress
 
 
 def _literal_lz11(payload: bytes) -> bytes:

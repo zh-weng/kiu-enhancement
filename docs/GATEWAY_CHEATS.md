@@ -6,13 +6,13 @@
 
 生成命令：
 
-```powershell
-python kiu.py export-cheats
+```sh
+python run_kiu.py export-cheats
 ```
 
-输出：`local/cheats/0004000000030100.txt`。可复制到
-`%APPDATA%/Azahar/cheats/0004000000030100.txt`，或者在 Azahar 的 Cheats
-界面逐项添加。
+输出：`local/cheats/0004000000030100.txt`。在 Azahar 的 Cheats 界面逐项添加，
+或复制到该模拟器用户数据目录的 `cheats/` 下；目录位置随平台/配置不同。
+安装项目后也可使用 `kiu-enhance export-cheats` 或 `python -m kiu export-cheats`。
 
 ## 已整理的项目
 
@@ -27,7 +27,7 @@ python kiu.py export-cheats
 
 Native Mouse 那组只能安装陆战 rotation-request 与空战 reticle 两个客机
 hook；Raw Input、自动判断战斗类型和高频 mailbox 更新仍需运行
-`python kiu.py aim`（当前仅 Windows preview）。单独勾选该金手指不会产生鼠标输入。
+`python run_kiu.py aim`（当前仅 Windows preview）。单独勾选该金手指不会产生鼠标输入。
 
 ## 正确的启动与取消方式
 
@@ -50,15 +50,6 @@ Restore 项：
 `All Core Patches - Restore`，用于一次恢复 60 FPS、宽屏、菜单原生路由和 Native
 Mouse 客机 hook；实验性俯仰补丁仍使用自己的 Restore。
 
-## 没有整理成金手指的内容
-
-- 120 FPS：DSP 音频仍为 2 倍速，不能作为可交付补丁。
-- Native Mouse 的宿主输入部分：Gateway code 无法读取 Windows Raw Input，也无法
-  代替 `native_fps_aim.py` 的进程内存通道。
-- v4/v5/v6 鼠标方案：已经被最新 direct aim 路线取代。
-- 旧菜单 framebuffer scaled-copy：与 60 FPS 同开只有 79% / 47 FPS，已由
-  `BottomRenderPass` 原生目标路由取代；旧 copy 不做成金手指。
-- Powers 与其余 UI 实验：尚未通过生产验收，不混入核心金手指。
-
 全部固定写入点、原字节、替换字节与 build hash 记录在
-`manifests/gateway_cheats.json`。
+`manifests/gateway_cheats.json`，由 `src/kiu/export_cheats.py` 从当前模块生成。
+金手指不能提供宿主输入；hook、时间、投影与菜单的技术原理集中在 [知识库](KNOWLEDGE.md)。

@@ -1,48 +1,17 @@
-"""Mouse aiming for both battle types, through whichever field that type uses.
+"""Windows preview adapter for native mouse aiming, mailbox ABI 1.
 
-The two modes are not the same problem and the same injection does not serve
-both, which is why every earlier attempt in this project that tried to cover
-them with one synthesised stylus felt wrong in at least one of them.
+Ground mode feeds raw relative deltas into the game's rotation-request
+consumer. Air mode maps the physical cursor onto the game's absolute reticle
+position; ``--map relative`` offers an explicit alternative. Auto mode uses
+guest hook activity and the recorded controller, not a fixed heap address.
 
-Ground battle has a camera controller.  The reticle lives in a box covering the
-middle third of the screen; pushing against the box edge becomes a rotation
-request at ``P+0xD38/+0xD3C``, which ``FUN_007462A4`` merges into the yaw and
-pitch at ``P+0x2AC/+0x2B0``.  So here the mouse drives *rotation*: this replaces
-the request at the point the game consumes it, which also suppresses the
-reticle's own edge push. The game's literal pitch bound of +/-1.39626336 rad
-still applies along with dynamic downstream limits; actual view range is not
-guaranteed to reach +/-80 degrees.
+GDB installs and verifies guest hooks. Subsequent mailbox updates use a
+nonce-verified process-memory mapping to avoid per-update GDB stops. The
+current host read-modify-write can race with guest consume-and-clear; loading
+a savestate can invalidate the mapping. Stop and restart the helper after a
+savestate load. Technical findings and limits live in docs/KNOWLEDGE.md.
 
-Air battle has no camera controller at all: ``P`` is null and the consumption
-point never executes, because the camera is on rails.  The reticle *is* the aim,
-and it moves over the whole 400x240 top screen.  Measured, sweeping the reticle
-and reading the world target it produces at ``A+0x98``:
-
-    reticle x     40      120      200      280      360
-    world  x   -861.29  -430.64     0.00   430.64   861.29
-
-Exactly linear, with screen centre on zero.  So here the mouse drives
-*position*, written straight into ``A+0xA4/+0xA8`` at the clamp.
-
-Because that field *is* an absolute position, the cursor is mapped onto it
-directly rather than integrated from relative deltas.  Accumulating deltas into
-a position that the game already treats as absolute buys nothing and costs
-everything that goes wrong with an integrator: drift, a sensitivity to tune, and
-travel silently lost at the bound when the accumulator saturates.  A direct map
-has none of those -- the reticle is a pure function of where the cursor is, so
-the same cursor position always gives the same reticle position no matter how it
-was reached or how fast.  ``--map relative`` keeps the old integrator for
-comparison.
-
-``--mode auto`` tells them apart by whether the rotation-request consumer is
-running, which is a property of the loaded state rather than a guess.
-
-Both mailboxes are written through the emulator's process memory rather than the
-GDB stub: a stub write costs the emulator about a tenth of a second, which is
-what held every previous driver here to 25 Hz.
-
-  F4   toggle aiming (only while the emulator window has focus)
-  ESC  quit
+F4 toggles aiming while the emulator has focus. ESC quits.
 """
 from __future__ import annotations
 
@@ -57,16 +26,15 @@ import threading
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gdbclient import GdbClient  # noqa: E402
-from guest_memory import GuestMemory, nonce_bytes  # noqa: E402
-from win_raw_mouse import RawMouseInput  # noqa: E402
-from aim_protocol import validate_mailboxes  # noqa: E402
-from aim_core import as_float, map_point, sense  # noqa: E402
+from ...gdbclient import GdbClient
+from .guest_memory import GuestMemory, nonce_bytes
+from .win_raw_mouse import RawMouseInput
+from ...aim_protocol import validate_mailboxes
+from ...aim_core import as_float, map_point, sense
 
-import win_window as window  # noqa: E402
-import patch_aim_request as aim  # noqa: E402
-import pin_reticle as pin  # noqa: E402
+from . import win_window as window
+from ...patches import patch_aim_request as aim
+from ...patches import pin_reticle as pin
 
 user32 = ctypes.windll.user32
 try:                       # physical pixels, so the map is not DPI-scaled

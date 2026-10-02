@@ -10,9 +10,9 @@ from capstone import CS_ARCH_ARM, CS_MODE_ARM, Cs
 from capstone.arm import ARM_OP_IMM
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import patch_widescreen as patch  # noqa: E402
+from kiu.patches import patch_widescreen as patch  # noqa: E402
 
 
 class FakeGdb:

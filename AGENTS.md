@@ -34,6 +34,10 @@ Use Python 3.11+ and the declared dependencies. Run `python -m unittest discover
 Clean-checkout tests must not require a ROM; optional private-image checks remain available when `local/extracted/exefs_code.bin` exists.
 The research workstation may use a local conda `kiu` environment; never hard-code its location in public tools.
 
+Runtime code belongs in `src/kiu/`: platform-neutral core/protocol, `patches/`, lazy host `backends/`, and explicitly opt-in `experimental/`.
+Development extraction/analysis tools belong in `tools/dev/`; run them as `python -m tools.dev.NAME`.
+Keep `python run_kiu.py`, installed `kiu-enhance`, and `python -m kiu` as equivalent public CLI entry points.
+
 `prepare_kiu.py` accepts a user-owned decrypted CCI. It verifies the exheader and ExeFS superblock hashes.
 ExeFS entry offsets are bytes; the table has ten 0x10-byte entries. Per-file hashes on the known decrypted dump reflect ciphertext and do not match; do not present them as proof of corruption or proof of integrity.
 Compressed ExeFS code is not supported by this verified workflow.
@@ -41,5 +45,5 @@ Compressed ExeFS code is not supported by this verified workflow.
 ## Distribution
 
 Project code is MIT; third-party libraries and Azahar retain their licenses. No Nintendo game material is licensed by this repository.
-`codex/development` has an independent clean root for distribution. Keep `codex/research-before-cleanup` and other research history local-only. When publication is authorized, push only the distribution branch; never use `git push --all` / `--mirror` or publish the research branches/full `.git` directory.
+`codex/development` is for development; `main` is the public candidate. Keep private research branches/history local-only. When publication is authorized, push only the approved public branch; never use `git push --all` / `--mirror` or publish research branches/full `.git` directories.
 Do not publish, push, create a GitHub release or alter emulator configuration without user authorization.

@@ -8,9 +8,9 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
-from gdbclient import GdbClient  # noqa: E402
+from kiu.gdbclient import GdbClient  # noqa: E402
 
 
 class _FakeSocket:
@@ -43,7 +43,7 @@ class _ScriptedGdbClient(GdbClient):
 class GdbClientSocketTests(unittest.TestCase):
     def test_local_rsp_connection_disables_nagle(self) -> None:
         fake = _FakeSocket()
-        with mock.patch("gdbclient.socket.create_connection", return_value=fake) as connect:
+        with mock.patch("kiu.gdbclient.socket.create_connection", return_value=fake) as connect:
             client = GdbClient(host="127.0.0.1", port=24689, timeout=3.5)
 
         connect.assert_called_once_with(("127.0.0.1", 24689), timeout=3.5)

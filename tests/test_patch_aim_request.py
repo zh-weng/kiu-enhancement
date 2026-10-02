@@ -16,11 +16,11 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
 from capstone import CS_ARCH_ARM, CS_MODE_ARM, Cs  # noqa: E402
 
-import patch_aim_request as aim  # noqa: E402
+from kiu.patches import patch_aim_request as aim  # noqa: E402
 
 
 def _instructions():
@@ -88,7 +88,7 @@ class LayoutTests(unittest.TestCase):
 @unittest.skipUnless(sys.platform == "win32", "Windows process-memory adapter")
 class GuestMemoryTests(unittest.TestCase):
     def test_a_short_nonce_is_refused(self) -> None:
-        from guest_memory import GuestMemory, nonce_bytes
+        from kiu.backends.windows.guest_memory import GuestMemory, nonce_bytes
         self.assertEqual(len(nonce_bytes(0)), 16)
         self.assertNotEqual(nonce_bytes(1), nonce_bytes(2))
         memory = GuestMemory.__new__(GuestMemory)
@@ -97,7 +97,7 @@ class GuestMemoryTests(unittest.TestCase):
             memory.anchor(0, b"tooshort")
 
     def test_reading_before_anchoring_is_an_error_not_a_wrong_address(self) -> None:
-        from guest_memory import GuestMemory
+        from kiu.backends.windows.guest_memory import GuestMemory
         memory = GuestMemory.__new__(GuestMemory)
         memory.handle = None
         memory._offset = None

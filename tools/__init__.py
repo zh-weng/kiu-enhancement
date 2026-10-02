@@ -1,1 +1,1 @@
-"""Build-locked Kid Icarus: Uprising enhancement tooling."""
+"""Repository development tools; not installed in the runtime package."""

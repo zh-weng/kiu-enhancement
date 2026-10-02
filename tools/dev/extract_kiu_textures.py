@@ -15,29 +15,20 @@ import json
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 try:
     from PIL import Image
 except ImportError as exc:  # pragma: no cover - exercised only on bad setup.
     raise SystemExit("Pillow is required for PNG export: python -m pip install pillow") from exc
 
-try:  # Running as ``python -m tools.extract_kiu_textures``.
-    from .kiu_assets import (
-        AssetFormatError,
-        decode_pica_texture,
-        iter_cgfx_textures,
-        iter_darc,
-        unwrap_lz11_darc,
-    )
-except ImportError:  # Running the file directly from the repository root.
-    from kiu_assets import (  # type: ignore
-        AssetFormatError,
-        decode_pica_texture,
-        iter_cgfx_textures,
-        iter_darc,
-        unwrap_lz11_darc,
-    )
+from .kiu_assets import (
+    AssetFormatError,
+    decode_pica_texture,
+    iter_cgfx_textures,
+    iter_darc,
+    unwrap_lz11_darc,
+)
 
 
 TITLE_ID = "0004000000030100"

@@ -15,12 +15,12 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
 from capstone import CS_ARCH_ARM, CS_MODE_ARM, Cs  # noqa: E402
 from capstone.arm import ARM_OP_REG  # noqa: E402
 
-import pin_reticle as pin  # noqa: E402
+from kiu.patches import pin_reticle as pin  # noqa: E402
 
 
 def _instructions():

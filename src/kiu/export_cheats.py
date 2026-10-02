@@ -16,20 +16,17 @@ import json
 import math
 import re
 import struct
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-TOOLS = ROOT / "tools"
-sys.path.insert(0, str(TOOLS))
+from .patches import patch_60fps as fps
+from .patches import patch_aim_request as aim
+from .experimental import menu_render_pass as menu
+from .experimental import patch_pitch_limit as pitch
+from .patches import patch_widescreen as wide
+from .patches import pin_reticle as reticle
 
-import patch_60fps as fps  # noqa: E402
-import patch_aim_request as aim  # noqa: E402
-import menu_render_pass as menu  # noqa: E402
-import patch_pitch_limit as pitch  # noqa: E402
-import patch_widescreen as wide  # noqa: E402
-import pin_reticle as reticle  # noqa: E402
+ROOT = Path(__file__).resolve().parents[2]
 
 TITLE_ID = "0004000000030100"
 PRODUCT_CODE = "CTR-P-AKDE"
@@ -420,7 +417,7 @@ def build(code_path: Path | None = None) -> tuple[str, dict[str, object]]:
         _section(
             "Native Mouse Guest Hooks - Enable",
             [
-                "Helper only: still run tools/native_fps_aim.py for Raw Input and mailbox updates.",
+                "Helper only: still run kiu-enhance aim for Raw Input and mailbox updates.",
                 "Installs ground rotation and air reticle hooks; it is not mouse input by itself.",
             ],
             native_enable(native),
@@ -516,7 +513,7 @@ def build(code_path: Path | None = None) -> tuple[str, dict[str, object]]:
             "native_mouse_guest_hooks": {
                 "status": "preview_helper_full_regression_pending",
                 "standalone_cheat": False,
-                "requires": "tools/native_fps_aim.py",
+                "requires": "kiu-enhance aim",
                 "enable": "Native Mouse Guest Hooks - Enable",
                 "restore": "Native Mouse Guest Hooks - Restore",
                 "sites": [item.record() for item in native],
@@ -531,10 +528,7 @@ def build(code_path: Path | None = None) -> tuple[str, dict[str, object]]:
             },
         },
         "excluded": {
-            "120_fps": "DSP audio still runs at double speed; not a production patch.",
             "native_mouse_input": "Raw Input and host process-memory updates cannot be expressed as Gateway codes.",
-            "mouse_v4_v5_v6": "Superseded by native_fps_aim.py; retained only as research/fallback.",
-            "powers_and_ui": "Current worktree experiments are not accepted production patches.",
         },
     }
     return text, manifest

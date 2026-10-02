@@ -32,8 +32,8 @@ and [sp, #0x68], so it has to be entered with sp exactly as the call site left
 it.  That is why this tails into the callee with ``b`` after restoring the
 stack rather than calling it.
 
-    python tools/patch_aim_request.py apply
-    python tools/patch_aim_request.py turn 0.05 0
+    python -m kiu.patches.patch_aim_request apply
+    python -m kiu.patches.patch_aim_request turn 0.05 0
 """
 from __future__ import annotations
 
@@ -42,14 +42,12 @@ import json
 import struct
 import sys
 import time
-from pathlib import Path
 
 from capstone import CS_ARCH_ARM, CS_MODE_ARM, Cs
 from capstone.arm import ARM_OP_MEM, ARM_REG_PC
 from keystone import KS_ARCH_ARM, KS_MODE_ARM, Ks
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gdbclient import GdbClient  # noqa: E402
+from ..gdbclient import GdbClient
 
 CODE_BASE = 0x00100000
 CODE_SHA256 = "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"

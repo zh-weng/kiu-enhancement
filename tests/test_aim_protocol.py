@@ -9,9 +9,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import aim_protocol as abi  # noqa: E402
+from kiu import aim_protocol as abi  # noqa: E402
 
 
 class FakeMemory:
@@ -57,13 +57,14 @@ class FakeWindow:
 class PlatformProtocolTests(unittest.TestCase):
     def test_import_needs_no_windows_backend_or_assembler(self):
         script = (
-            "import sys; sys.path.insert(0, sys.argv[1]); import aim_protocol; "
-            "blocked = {'ctypes', 'win_raw_mouse', 'guest_memory', 'native_fps_aim', "
+            "import sys; sys.path.insert(0, sys.argv[1]); from kiu import aim_protocol; "
+            "blocked = {'ctypes', 'kiu.backends.windows.win_raw_mouse', "
+            "'kiu.backends.windows.guest_memory', 'kiu.backends.windows.native_fps_aim', "
             "'capstone', 'keystone'}; "
             "assert not blocked.intersection(sys.modules), blocked.intersection(sys.modules)"
         )
         result = subprocess.run(
-            [sys.executable, "-c", script, str(ROOT / "tools")],
+            [sys.executable, "-c", script, str(ROOT / "src")],
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -130,8 +131,8 @@ class MailboxValidationTests(unittest.TestCase):
 class ManifestCompatibilityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        import patch_aim_request as ground
-        import pin_reticle as reticle
+        from kiu.patches import patch_aim_request as ground
+        from kiu.patches import pin_reticle as reticle
 
         cls.modules = {"ground": ground, "reticle": reticle}
         cls.manifest = json.loads((ROOT / "manifests/aim_protocol.json").read_text(encoding="utf-8"))

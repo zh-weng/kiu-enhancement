@@ -17,7 +17,7 @@ from capstone import CS_ARCH_ARM, CS_MODE_ARM, Cs
 from capstone.arm import ARM_OP_IMM, ARM_OP_MEM, ARM_REG_PC
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 CODE_PATH = ROOT / "local" / "extracted" / "exefs_code.bin"
 TEXT_BASE = 0x00100000
 TEXT_SIZE = 0x00B950F0

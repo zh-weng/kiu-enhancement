@@ -1,20 +1,10 @@
-"""Walk a function by following its branches, instead of scanning it linearly.
+"""Inspect reachable ARM instructions and direct branches from a function entry.
 
-Every wrong call list in this project came from linear scanning, in four
-different ways: a fixed window that cut a function short, stopping at the first
-``pop {…, pc}`` when the function had several returns, running past the end into
-the next function, and -- the one that invalidated a whole conclusion --
-disassembling straight through embedded data and resynchronising on garbage.
-That last one produced a ``pop {r4, r5, pc}`` for a function whose prologue does
-``vpush {d8-d15}``, which cannot be its epilogue, and a ``vstmia`` that turned
-out never to execute because it was never an instruction.
+This read-only helper follows direct branches rather than treating a fixed
+window as one function.  Indirect exits are reported, not guessed.  Reachable
+instructions can still depend on the selected entry and code image.
 
-Reachability answers all four at once: data is not reachable, the extent is
-whatever the branches actually cover, every return is found rather than the
-first, and nothing past the last reachable instruction is attributed to the
-function.
-
-    python tools/armscan.py 0x0077DCF4
+    python -m tools.dev.armscan 0x0077DCF4
 """
 from __future__ import annotations
 
@@ -27,7 +17,7 @@ from capstone import CS_ARCH_ARM, CS_MODE_ARM, Cs
 from capstone.arm import ARM_CC_AL, ARM_OP_IMM, ARM_OP_REG, ARM_REG_LR, ARM_REG_PC
 
 CODE_BASE = 0x00100000
-DEFAULT_IMAGE = Path(__file__).resolve().parents[1] / "local/extracted/exefs_code.bin"
+DEFAULT_IMAGE = Path(__file__).resolve().parents[2] / "local/extracted/exefs_code.bin"
 
 
 @dataclass

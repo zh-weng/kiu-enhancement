@@ -10,11 +10,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
 if sys.platform == "win32":
-    import guest_memory  # noqa: E402
-    import native_fps_aim as driver  # noqa: E402
+    from kiu.backends.windows import guest_memory  # noqa: E402
+    from kiu.backends.windows import native_fps_aim as driver  # noqa: E402
 
 
 class FakeMemory:

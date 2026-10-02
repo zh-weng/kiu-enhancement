@@ -11,9 +11,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import win_raw_mouse as raw_mouse  # noqa: E402
+from kiu.backends.windows import win_raw_mouse as raw_mouse  # noqa: E402
 
 
 def make_mouse_packet(dx: int, dy: int, *, absolute: bool = False) -> bytes:

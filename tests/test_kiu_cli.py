@@ -11,11 +11,11 @@ from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import gdbclient  # noqa: E402
-import kiu_cli as cli  # noqa: E402
-import patch_widescreen as wide  # noqa: E402
+from kiu import gdbclient  # noqa: E402
+from kiu import cli  # noqa: E402
+from kiu.patches import patch_widescreen as wide  # noqa: E402
 
 
 class FakePatchModule:

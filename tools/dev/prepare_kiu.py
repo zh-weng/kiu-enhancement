@@ -10,13 +10,10 @@ import json
 import struct
 from pathlib import Path
 
-try:
-    from .lz11 import decompress as _lz11_decompress
-except ImportError:
-    from lz11 import decompress as _lz11_decompress
+from .lz11 import decompress as _lz11_decompress
 
 MEDIA_UNIT = 0x200
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SUPPORTED_TITLE_ID = "0004000000030100"
 SUPPORTED_PRODUCT_CODE = "CTR-P-AKDE"
 SUPPORTED_CODE_SHA256 = "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"

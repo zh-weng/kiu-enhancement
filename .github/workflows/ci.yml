@@ -15,10 +15,13 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install -e .
-      - run: python kiu.py --help
+      - run: python run_kiu.py --help
+      - run: python -m kiu --help
+      - run: kiu-enhance --help
       - run: python -m unittest discover -s tests
       - run: python tools/build_release.py --check
       - run: python tools/build_release.py
+      - run: python -m pip wheel --no-deps --wheel-dir local/wheels .
   portable-apple-silicon:
     runs-on: macos-latest
     steps:
@@ -26,7 +29,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: python kiu.py --help
+      - run: python run_kiu.py --help
       - run: python -m unittest discover -s tests -p test_aim_core.py
       - run: python -m unittest discover -s tests -p test_asset_formats.py
       - run: python -m unittest discover -s tests -p test_gdbclient.py

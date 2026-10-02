@@ -13,9 +13,9 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import export_gateway_cheats as export  # noqa: E402
+from kiu import export_cheats as export  # noqa: E402
 
 
 EXPECTED_SECTIONS = (

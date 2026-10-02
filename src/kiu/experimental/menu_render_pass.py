@@ -25,15 +25,13 @@ from pathlib import Path
 
 from keystone import KS_ARCH_ARM, KS_MODE_ARM, Ks
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from gdbclient import GdbClient
+from ..gdbclient import GdbClient
 
 
 TITLE_ID = "0004000000030100"
 CODE_SHA256 = "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
 CODE_BASE = 0x00100000
-CODE_PATH = Path(__file__).resolve().parents[1] / "local/extracted/exefs_code.bin"
+CODE_PATH = Path(__file__).resolve().parents[3] / "local/extracted/exefs_code.bin"
 
 PRE_SITE = 0x009167C0
 POST_SITE = 0x0091688C

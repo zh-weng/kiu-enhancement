@@ -18,11 +18,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import patch_aim_request as aim  # noqa: E402
-import patch_pitch_limit as pitch  # noqa: E402
-import pin_reticle as pin  # noqa: E402
+from kiu.patches import patch_aim_request as aim  # noqa: E402
+from kiu.experimental import patch_pitch_limit as pitch  # noqa: E402
+from kiu.patches import pin_reticle as pin  # noqa: E402
 
 
 class FakeGdb:
@@ -76,21 +76,20 @@ sys.path.insert(0, sys.argv[1])
 with patch.object(Path, 'read_bytes', side_effect=AssertionError('unexpected file dependency')):
     for name in sys.argv[2:]:
         importlib.import_module(name)
+assert 'kiu.backends.windows.mouse_look_live' not in sys.modules
 assert 'mouse_look_live' not in sys.modules
 assert 'numpy' not in sys.modules
 """
-        names = ["patch_aim_request", "pin_reticle", "patch_pitch_limit", "menu_render_pass"]
-        dependencies = ["gdbclient"]
+        names = ["kiu.patches.patch_aim_request", "kiu.patches.pin_reticle",
+                 "kiu.experimental.patch_pitch_limit", "kiu.experimental.menu_render_pass"]
         if sys.platform == "win32":
-            names.append("native_fps_aim")
-            dependencies += ["guest_memory", "win_raw_mouse", "win_window", "aim_protocol", "aim_core"]
+            names.append("kiu.backends.windows.native_fps_aim")
         with tempfile.TemporaryDirectory() as directory:
-            clean_tools = Path(directory) / "tools"
-            clean_tools.mkdir()
-            for name in dependencies + names:
-                shutil.copy2(ROOT / "tools" / f"{name}.py", clean_tools)
+            clean_src = Path(directory) / "src"
+            shutil.copytree(ROOT / "src", clean_src,
+                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
             result = subprocess.run(
-                [sys.executable, "-c", script, str(clean_tools), *names],
+                [sys.executable, "-c", script, str(clean_src), *names],
                 cwd=directory, text=True, capture_output=True,
             )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -139,9 +138,9 @@ assert 'numpy' not in sys.modules
                     self.assertFalse(module.status(guest)["hook_matches"])
 
     def test_cli_real_status_prevents_all_writes_for_a_foreign_later_component(self) -> None:
-        import gdbclient
-        import kiu_cli as cli
-        import menu_render_pass as menu
+        from kiu import gdbclient
+        from kiu import cli
+        from kiu.experimental import menu_render_pass as menu
 
         for owner, address, raw in (
             ("aim", aim.HOOK_VA, b"????"),

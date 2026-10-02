@@ -46,9 +46,9 @@ value near 90 degrees points the camera at the poles, where a look-at built from
 an up vector degenerates; ``--degrees 89`` is as far as this will go without
 ``--force`` for that reason.
 
-    python tools/patch_pitch_limit.py status
-    python tools/patch_pitch_limit.py set --degrees 88
-    python tools/patch_pitch_limit.py revert
+    python -m kiu.experimental.patch_pitch_limit status
+    python -m kiu.experimental.patch_pitch_limit set --degrees 88
+    python -m kiu.experimental.patch_pitch_limit revert
 """
 from __future__ import annotations
 
@@ -57,10 +57,8 @@ import json
 import math
 import struct
 import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gdbclient import GdbClient  # noqa: E402
+from ..gdbclient import GdbClient
 
 CODE_BASE = 0x00100000
 CODE_SHA256 = "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"

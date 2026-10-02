@@ -10,10 +10,10 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import aim_core as core  # noqa: E402
-from aim_protocol import RETICLE  # noqa: E402
+from kiu import aim_core as core  # noqa: E402
+from kiu.aim_protocol import RETICLE  # noqa: E402
 
 
 class FakeTransport:
@@ -87,15 +87,19 @@ from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0, sys.argv[1])
 with patch.object(Path, 'read_bytes', side_effect=AssertionError('no game reads')):
-    import aim_core
+    from kiu import aim_core
 assert not any(name in sys.modules for name in
-               ('guest_memory', 'win_window', 'native_fps_aim', 'capstone', 'keystone'))
+               ('kiu.backends.windows.guest_memory', 'kiu.backends.windows.win_window',
+                'kiu.backends.windows.native_fps_aim', 'capstone', 'keystone'))
 assert aim_core.map_point((0, 0, 800, 480), 400, 240, (400, 240)) == (200, 120)
 """
         with tempfile.TemporaryDirectory() as directory:
-            for name in ("aim_core", "aim_protocol"):
-                shutil.copy2(ROOT / "tools" / f"{name}.py", directory)
-            result = subprocess.run([sys.executable, "-c", script, directory],
+            clean_src = Path(directory) / "src"
+            clean_package = clean_src / "kiu"
+            clean_package.mkdir(parents=True)
+            for name in ("__init__", "aim_core", "aim_protocol"):
+                shutil.copy2(ROOT / "src/kiu" / f"{name}.py", clean_package)
+            result = subprocess.run([sys.executable, "-c", script, str(clean_src)],
                                     cwd=directory, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 

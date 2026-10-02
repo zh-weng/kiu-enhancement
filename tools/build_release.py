@@ -21,26 +21,38 @@ ROOT = Path(__file__).resolve().parents[1]
 TITLE_ID = "0004000000030100"
 DEFAULT_OUTPUT = ROOT / "local/releases/kiu-enhancements-preview-source.zip"
 ROOT_FILES = (
-    "README.md", "STATUS.md", "AGENTS.md", "LICENSE", "pyproject.toml", ".gitignore", ".gitattributes", "kiu.py",
+    "README.md", "STATUS.md", "AGENTS.md", "LICENSE", "pyproject.toml", ".gitignore", ".gitattributes", "run_kiu.py",
 )
 DOC_FILES = (
     "docs/ARCHITECTURE.md", "docs/GATEWAY_CHEATS.md",
-    "docs/DEVELOPMENT.md", "docs/CLEANUP.md", "docs/KNOWLEDGE.md",
+    "docs/DEVELOPMENT.md", "docs/KNOWLEDGE.md",
 )
 MANIFEST_FILES = (
     "manifests/title.json", "manifests/gateway_cheats.json", "manifests/aim_protocol.json",
 )
-TOOL_NAMES = (
-    "__init__", "aim_protocol", "aim_core", "armscan", "build_release",
-    "export_gateway_cheats",
-    "extract_kiu_textures", "find_arm_mem_refs", "gdbclient", "guest_memory",
-    "inspect_arm_static", "kiu_assets", "kiu_cli", "lz11", "menu_render_pass",
-    "native_fps_aim", "patch_60fps", "patch_aim_request", "patch_pitch_limit",
-    "patch_widescreen", "pin_reticle", "prepare_kiu", "win_raw_mouse", "win_window",
+PACKAGE_FILES = (
+    "src/kiu/__init__.py", "src/kiu/__main__.py", "src/kiu/cli.py",
+    "src/kiu/aim_core.py", "src/kiu/aim_protocol.py", "src/kiu/export_cheats.py",
+    "src/kiu/gdbclient.py",
+    "src/kiu/patches/__init__.py", "src/kiu/patches/patch_60fps.py",
+    "src/kiu/patches/patch_widescreen.py", "src/kiu/patches/patch_aim_request.py",
+    "src/kiu/patches/pin_reticle.py",
+    "src/kiu/backends/__init__.py", "src/kiu/backends/windows/__init__.py",
+    "src/kiu/backends/windows/native_fps_aim.py", "src/kiu/backends/windows/guest_memory.py",
+    "src/kiu/backends/windows/win_raw_mouse.py", "src/kiu/backends/windows/win_window.py",
+    "src/kiu/experimental/__init__.py", "src/kiu/experimental/menu_render_pass.py",
+    "src/kiu/experimental/patch_pitch_limit.py",
+)
+DEV_NAMES = (
+    "__init__", "armscan", "extract_kiu_textures", "find_arm_mem_refs",
+    "inspect_arm_static", "kiu_assets", "lz11", "prepare_kiu",
+)
+DEV_FILES = (
+    "tools/__init__.py", "tools/build_release.py",
+    *(f"tools/dev/{name}.py" for name in DEV_NAMES),
 )
 REQUIRED_FILES = (
-    *ROOT_FILES, *DOC_FILES, *MANIFEST_FILES,
-    *(f"tools/{name}.py" for name in TOOL_NAMES),
+    *ROOT_FILES, *DOC_FILES, *MANIFEST_FILES, *PACKAGE_FILES, *DEV_FILES,
     ".github/workflows/ci.yml",
 )
 
@@ -54,7 +66,7 @@ def generate_cheats(root: Path) -> bytes:
     with tempfile.TemporaryDirectory(prefix="kiu-release-cheats-") as directory:
         output = Path(directory) / f"{TITLE_ID}.txt"
         result = subprocess.run(
-            [sys.executable, str(root / "tools/export_gateway_cheats.py"),
+            [sys.executable, str(root / "run_kiu.py"), "export-cheats", "--",
              "--output", str(output), "--manifest", str(Path(directory) / "manifest.json")],
             cwd=root, capture_output=True, text=True,
         )

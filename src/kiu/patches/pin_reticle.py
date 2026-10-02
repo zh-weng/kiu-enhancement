@@ -1,7 +1,6 @@
 """Own the reticle position at the one place the game reads it.
 
-Static analysis of the reticle chain (kiu-decomp, 2026-09-06) names
-``FUN_006D2ABC`` as the clamp: it is handed the reticle object ``A`` in r0, the
+``FUN_006D2ABC`` is the clamp: it is handed the reticle object ``A`` in r0, the
 camera controller ``P`` in r1, and the four bounds plus a vertical carry in
 s0-s4.  It reads the accumulated position from ``A+0xA4/+0xA8``, clamps it, and
 turns whatever fell outside the bounds into a camera rotation request at
@@ -15,12 +14,6 @@ project's own image before any of this was written:
     006d2be4  vstr s0, [r0, #0x138]         r0 = P+0xC00, so P+0xD38/+0xD3C
     00703fec  vldmia r0, {s0, s1}           the consumer of that request
     0074664c  0.5 / +1.39626336 / -1.39626336   a pitch clamped to +/-80.00 deg
-
-That last literal is why this chain is worth the work: the yaw/pitch scalars
-this project spent weeks failing to find do exist, at ``P+0x2AC/+0x2B0``.  The
-thing I had been measuring instead -- ``cam+0x77C/+0x784`` -- is the second
-frustum plane's nx/nz cache, which is why every ablation verdict built on it
-refused to close.
 
 Two jobs, one hook, because they share a call site:
 
@@ -37,9 +30,9 @@ are live arguments here, and a cave that clobbered them would corrupt the
 bounds rather than the position.  The position is copied as a word, not a
 float, so no VFP register is needed to move it either.
 
-    python tools/pin_reticle.py apply
-    python tools/pin_reticle.py watch
-    python tools/pin_reticle.py mode 1
+    python -m kiu.patches.pin_reticle apply
+    python -m kiu.patches.pin_reticle watch
+    python -m kiu.patches.pin_reticle mode 1
 """
 from __future__ import annotations
 
@@ -48,14 +41,12 @@ import json
 import struct
 import sys
 import time
-from pathlib import Path
 
 from capstone import CS_ARCH_ARM, CS_MODE_ARM, Cs
 from capstone.arm import ARM_OP_MEM, ARM_REG_PC
 from keystone import KS_ARCH_ARM, KS_MODE_ARM, Ks
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gdbclient import GdbClient  # noqa: E402
+from ..gdbclient import GdbClient
 
 CODE_BASE = 0x00100000
 CODE_SHA256 = "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
