@@ -1,0 +1,298 @@
+{
+  "schema_version": 1,
+  "title_id": "0004000000030100",
+  "product_code": "CTR-P-AKDE",
+  "code_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679",
+  "generated_cheat": "local/cheats/0004000000030100.txt",
+  "features": {
+    "60_fps": {
+      "status": "production_runtime_user_accepted",
+      "standalone_cheat": true,
+      "enable": "60 FPS - Enable",
+      "restore": "60 FPS - Restore 30 FPS",
+      "sites": [
+        {
+          "name": "dispatcher delta cave",
+          "address": "0x00c957c0",
+          "size": 20,
+          "original_hex": "0000000000000000000000000000000000000000",
+          "replacement_hex": "028a9fed088a20ee1eff2fe100f020e30000003f",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "global delta cave",
+          "address": "0x00c957e0",
+          "size": 24,
+          "original_hex": "000000000000000000000000000000000000000000000000",
+          "replacement_hex": "080a90ed022adfed220a20eea1c8e5ea00f020e30000003f",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "Scale FUN_0060DFF8's incoming 1/30 s delta to 1/60 s.",
+          "address": "0x0060e00c",
+          "size": 4,
+          "original_hex": "408ab0ee",
+          "replacement_hex": "eb1d1aeb",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "Scale the global time singleton's 2-VBlank master delta to 1 VBlank.",
+          "address": "0x00607a74",
+          "size": 4,
+          "original_hex": "080a90ed",
+          "replacement_hex": "59371aea",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "live scheduler interval",
+          "address_expression": "*(0x00d63824)+0x54",
+          "original_hex": "02000000",
+          "replacement_hex": "00000000",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        }
+      ]
+    },
+    "widescreen": {
+      "status": "production_verified",
+      "standalone_cheat": true,
+      "variants": {
+        "16:9": [
+          {
+            "name": "routed-bottom projection extension 1.77778",
+            "address": "0x00c95800",
+            "size": 64,
+            "original_hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "replacement_hex": "18209fe5002092e5010052e30200001a031a9fed010a20ee0a0a80ed1eff2fe12068f3000000403f000000000000000000000000000000000000000000000000",
+            "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+          },
+          {
+            "name": "projection cave 1.77778",
+            "address": "0x00c95840",
+            "size": 96,
+            "original_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "replacement_hex": "000095e5402090e530309fe5030052e10900001a0a0a90ed051a90ed082a9fed022a21ee420ab4ee10faf1ee060000da041a9fed010a20ee0a0a80ed0025f1ea000080bfcdcc2cbf0000703f00402de9daffffeb0040bde8f924f1ea00000000",
+            "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+          },
+          {
+            "name": "projection cave 1.77778",
+            "address": "0x00c958a0",
+            "size": 96,
+            "original_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "replacement_hex": "000095e5402090e530309fe5030052e10900001a0a0a90ed051a90ed082a9fed022a21ee420ab4ee10faf1ee060000da041a9fed010a20ee0a0a80edfb24f1ea000080bfcdcc2cbf0000703f00402de9c2ffffeb0040bde8f424f1ea00000000",
+            "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+          },
+          {
+            "name": "projection redirect 1.77778",
+            "address": "0x008dec80",
+            "size": 4,
+            "original_hex": "000095e5",
+            "replacement_hex": "eeda0eea",
+            "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+          },
+          {
+            "name": "projection redirect 1.77778",
+            "address": "0x008deccc",
+            "size": 4,
+            "original_hex": "000095e5",
+            "replacement_hex": "f3da0eea",
+            "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+          }
+        ],
+        "21:9": [
+          {
+            "name": "routed-bottom projection extension 2.33333",
+            "address": "0x00c95800",
+            "size": 64,
+            "original_hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "replacement_hex": "18209fe5002092e5010052e30200001a031a9fed010a20ee0a0a80ed1eff2fe12068f3002549123f000000000000000000000000000000000000000000000000",
+            "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+          },
+          {
+            "name": "projection cave 2.33333",
+            "address": "0x00c95840",
+            "size": 96,
+            "original_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "replacement_hex": "000095e5402090e530309fe5030052e10900001a0a0a90ed051a90ed082a9fed022a21ee420ab4ee10faf1ee060000da041a9fed010a20ee0a0a80ed0025f1ea000080bfcdcc2cbf6edb363f00402de9daffffeb0040bde8f924f1ea00000000",
+            "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+          },
+          {
+            "name": "projection cave 2.33333",
+            "address": "0x00c958a0",
+            "size": 96,
+            "original_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "replacement_hex": "000095e5402090e530309fe5030052e10900001a0a0a90ed051a90ed082a9fed022a21ee420ab4ee10faf1ee060000da041a9fed010a20ee0a0a80edfb24f1ea000080bfcdcc2cbf6edb363f00402de9c2ffffeb0040bde8f424f1ea00000000",
+            "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+          },
+          {
+            "name": "projection redirect 2.33333",
+            "address": "0x008dec80",
+            "size": 4,
+            "original_hex": "000095e5",
+            "replacement_hex": "eeda0eea",
+            "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+          },
+          {
+            "name": "projection redirect 2.33333",
+            "address": "0x008deccc",
+            "size": 4,
+            "original_hex": "000095e5",
+            "replacement_hex": "f3da0eea",
+            "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+          }
+        ]
+      },
+      "restore": "Widescreen - Restore 5-3"
+    },
+    "menu_bottom_to_top": {
+      "status": "experimental_route_verified_2d_fill_pending",
+      "standalone_cheat": true,
+      "enable": "Menu Bottom-to-Top Native Route - Enable",
+      "restore": "Menu Bottom-to-Top Native Route - Restore",
+      "sites": [
+        {
+          "name": "menu bottom-to-top pre-pass cave",
+          "address": "0x00c95640",
+          "size": 192,
+          "original_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "replacement_hex": "00c0a0e3181090e5422f06e3742447e3020051e11e00001a1c1090e56f2d06e3522546e3020051e11900001abc1603e3d61040e3001091e5000051e30200000a401191e5000051e30900001a01c0a0e3202806e3f32040e30130a0e3003082e5401090e5000051e3903100e34c308115070000ea202806e3f32040e30030a0e3003082e5401090e5000051e3403100e34c308115541080e2060091e801005ce30020a0033804f2ea000000000000000000000000000000000000000000000000",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "menu bottom-to-top post-pass cave",
+          "address": "0x00c95700",
+          "size": 192,
+          "original_hex": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "replacement_hex": "00c0a0e3181090e5422f06e3742447e3020051e11e00001a1c1090e56f2d06e3522546e3020051e11900001abc1603e3d61040e3001091e5000051e30200000a401191e5000051e30900001a01c0a0e3202806e3f32040e30030a0e3003082e5401090e5000051e3403100e34c308115070000ea202806e3f32040e30030a0e3003082e5401090e5000051e3403100e34c308115541080e2060091e801005ce30020a0033b04f2ea000000000000000000000000000000000000000000000000",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "menu bottom-to-top pre-pass redirect",
+          "address": "0x009167c0",
+          "size": 4,
+          "original_hex": "541080e2",
+          "replacement_hex": "9efb0dea",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "menu bottom-to-top post-pass redirect",
+          "address": "0x0091688c",
+          "size": 4,
+          "original_hex": "541080e2",
+          "replacement_hex": "9bfb0dea",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        }
+      ],
+      "mailboxes": [
+        "0x00f36820"
+      ],
+      "notes": "Target/viewport routing and battle restore are runtime verified. Perspective content can use the matching widescreen variant; original 320-wide menu layouts remain, and the physical bottom may retain an old frame."
+    },
+    "native_mouse_guest_hooks": {
+      "status": "preview_helper_full_regression_pending",
+      "standalone_cheat": false,
+      "requires": "tools/native_fps_aim.py",
+      "enable": "Native Mouse Guest Hooks - Enable",
+      "restore": "Native Mouse Guest Hooks - Restore",
+      "sites": [
+        {
+          "name": "ground rotation-request cave",
+          "address": "0x00c95100",
+          "size": 104,
+          "original_hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "replacement_hex": "70402de954509fe5006095e550409fe5040056e10f00001a9e6f41e21c6085e5146095e5016086e2146085e5086095e5010056e30700001a030a95ed040ad5ed0060a0e30c6085e5106085e5186095e5016086e2186085e57040bde850c4eaea0061f3005841494d",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "air reticle late cave",
+          "address": "0x00c95200",
+          "size": 100,
+          "original_hex": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "replacement_hex": "d470c4e5e0002de94c509fe5006095e548709fe5070056e10d00001a086095e5020056e30a00001aa46094e5346085e5a86094e5386085e50c6095e5a46084e5106095e5a86084e53c6095e5016086e23c6085e5e000bde81eff2fe1c060f30049524554",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "air reticle clamp cave",
+          "address": "0x00c95f00",
+          "size": 164,
+          "original_hex": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          "replacement_hex": "70402de990509fe5006095e58c409fe5040056e11e00001a140085e5181085e5e06090e51c6085e5e86090e5206085e5e46090e52c6085e5ec6090e5306085e5246095e5016086e2246085e5086095e5010056e30200000a020056e30500000a0b0000eae46090e5a46080e5ec6090e5a86080e5030000ea0c6095e5a46080e5106095e5a86080e5286095e5016086e2286085e57040bde8c7f2e8eac060f30049524554",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "ground rotation-request redirect",
+          "address": "0x00704004",
+          "size": 4,
+          "original_hex": "a60801eb",
+          "replacement_hex": "3d4416eb",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "air reticle clamp redirect",
+          "address": "0x006d2ed4",
+          "size": 4,
+          "original_hex": "f8feffeb",
+          "replacement_hex": "090c17eb",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "air reticle late redirect",
+          "address": "0x006d2f10",
+          "size": 4,
+          "original_hex": "d470c4e5",
+          "replacement_hex": "ba0817eb",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        }
+      ],
+      "mailboxes": [
+        "0x00f36100",
+        "0x00f360c0"
+      ]
+    },
+    "ground_pitch_limit_60": {
+      "status": "experimental_downstream_limiter_remains",
+      "standalone_cheat": true,
+      "enable": "Ground Pitch Limit 60deg - Enable EXPERIMENTAL",
+      "restore": "Ground Pitch Limit - Restore",
+      "sites": [
+        {
+          "name": "ground pitch upper constant",
+          "address": "0x00746650",
+          "size": 4,
+          "original_hex": "c2b8b23f",
+          "replacement_hex": "920a863f",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "ground pitch lower constant",
+          "address": "0x00746654",
+          "size": 4,
+          "original_hex": "c2b8b2bf",
+          "replacement_hex": "920a86bf",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "force upper pitch bound",
+          "address": "0x00746504",
+          "size": 4,
+          "original_hex": "409ab0ce",
+          "replacement_hex": "409ab0ee",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        },
+        {
+          "name": "force lower pitch bound",
+          "address": "0x00746518",
+          "size": 4,
+          "original_hex": "409af0de",
+          "replacement_hex": "409af0ee",
+          "build_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679"
+        }
+      ]
+    }
+  },
+  "excluded": {
+    "120_fps": "DSP audio still runs at double speed; not a production patch.",
+    "native_mouse_input": "Raw Input and host process-memory updates cannot be expressed as Gateway codes.",
+    "mouse_v4_v5_v6": "Superseded by native_fps_aim.py; retained only as research/fallback.",
+    "powers_and_ui": "Current worktree experiments are not accepted production patches."
+  }
+}

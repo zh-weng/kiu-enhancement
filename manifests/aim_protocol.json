@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "abi_version": 1,
+  "endianness": "little",
+  "integer_type": "u32",
+  "float_type": "IEEE-754 binary32",
+  "code_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679",
+  "mailboxes": {
+    "ground": {
+      "address": "0x00f36100", "size": 32, "magic": "0x4d494158", "version": 1,
+      "fields": {"magic": 0, "version": 4, "gate": 8, "yaw_radians": 12, "pitch_radians": 16, "frames": 20, "applied": 24, "controller_guest_va": 28},
+      "ownership": "host: gate/yaw/pitch; guest: counters/controller and consume-clear yaw/pitch",
+      "delivery": "non-atomic host read-modify-write vs guest consume-clear; no exactly-once guarantee"
+    },
+    "reticle": {
+      "address": "0x00f360c0", "size": 64, "magic": "0x54455249", "version": 1,
+      "fields": {"magic": 0, "version": 4, "mode": 8, "x_pixels": 12, "y_pixels": 16, "reticle_guest_va": 20, "controller_guest_va": 24, "width_pixels": 28, "height_pixels": 32, "calls": 36, "applied": 40, "centre_x": 44, "centre_y": 48, "actual_x": 52, "actual_y": 56, "late_writes": 60},
+      "ownership": "host: mode/x/y; guest: object pointers/geometry/counters/actual position",
+      "modes": {"0": "observe", "1": "pin centre", "2": "host point"}
+    }
+  },
+  "host_interfaces": {
+    "MemoryTransport": ["read(guest_va, size) -> exact bytes", "write(guest_va, bytes)", "close()"],
+    "InputSource": ["relative device-count callbacks", "start(timeout)", "stop()"],
+    "WindowContext": ["focused()", "cursor_position() -> physical desktop pixels", "top_viewport() -> rectangle or null"]
+  },
+  "compatibility": "Unsupported magic/version must fail closed. Layout or semantic changes require an ABI bump and new guest hook fingerprints. Restart/savestate invalidates backend session anchors. Existing hooks are unchanged by source cleanup."
+}

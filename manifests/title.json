@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "game": "Kid Icarus: Uprising",
+  "region": "USA",
+  "title_id": "0004000000030100",
+  "product_code": "CTR-P-AKDE",
+  "remaster_version": 0,
+  "source_image_sha256": "98a5fd7708d4d31364953f05183c919093c9a1bac9a0a1b7a97fbb33c063cbc8",
+  "code_sha256": "2718aa2077a29560208c4e499288e5fecc4446d7adec95efb91ebf1b19eda679",
+  "code_size": 12992512,
+  "code_base": "0x00100000",
+  "notes": "Compatibility metadata only. No game image, asset or machine-specific path is distributed. prepare_kiu.py writes user extraction metadata under local/."
+}

@@ -1,0 +1,62 @@
+# Game dumps and derived binaries - never commit
+local/
+*.cci
+*.3ds
+*.cxi
+*.cia
+code.bin
+exefs_*.bin
+*.nds
+*.sav
+*.bin
+*.citra
+*.azahar
+*.states
+*.state
+*.dmp
+*.elf
+*.exe
+*.dll
+*.zip
+*.7z
+*.tar
+*.gz
+
+# Ghidra / IDA projects
+*.gpr
+*.rep
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Build outputs
+build/
+dist/
+.env
+.env.*
+config.local.*
+
+# Installer / capture logs
+*.log
+pktmon_dump.txt
+local/guest_anchor.json
+local/heap_anchor.json
+local/heap_snapshot.bin
+local/heap_snapshot.json
+local/power_candidates.json
+local/decomp_index.jsonl
+local/count_mirrors.json
+local/bp_sweep.jsonl
+local/fire_delta.json
+local/fire_delta2.json
+local/fire_events.json
