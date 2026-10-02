@@ -666,10 +666,12 @@ class RawMouseInput:
             self._api.register_raw_input_device(raw_device)
             raw_registered = True
 
-            self._api.register_hotkey(hwnd, HOTKEY_F4_ID, MOD_NOREPEAT, VK_F4)
-            f4_registered = True
-            self._api.register_hotkey(hwnd, HOTKEY_ESCAPE_ID, MOD_NOREPEAT, VK_ESCAPE)
-            escape_registered = True
+            if self._on_f4 is not None:
+                self._api.register_hotkey(hwnd, HOTKEY_F4_ID, MOD_NOREPEAT, VK_F4)
+                f4_registered = True
+            if self._on_escape is not None:
+                self._api.register_hotkey(hwnd, HOTKEY_ESCAPE_ID, MOD_NOREPEAT, VK_ESCAPE)
+                escape_registered = True
 
             with self._state_lock:
                 should_stop = self._stop_requested

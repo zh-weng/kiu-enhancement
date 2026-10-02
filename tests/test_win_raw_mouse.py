@@ -275,7 +275,8 @@ class RawMouseInputBehaviorTests(unittest.TestCase):
 
     def test_start_stop_registers_inputs_hotkeys_and_cleans_up(self) -> None:
         api = FakeMessageApi()
-        source = raw_mouse.RawMouseInput(lambda _dx, _dy: None, api=api)
+        source = raw_mouse.RawMouseInput(lambda _dx, _dy: None, api=api,
+                                         on_f4=lambda: None, on_escape=lambda: None)
         self.assertIs(source.start(timeout=1.0), source)
         self.assertTrue(source.running)
         self.assertEqual(source.hwnd, api.hwnd)
@@ -331,6 +332,18 @@ class RawMouseInputBehaviorTests(unittest.TestCase):
                 (api.hwnd, raw_mouse.HOTKEY_ESCAPE_ID),
             ],
         )
+
+    def test_disabled_escape_is_not_registered_or_unregistered(self) -> None:
+        api = FakeMessageApi()
+        source = raw_mouse.RawMouseInput(lambda _dx, _dy: None, api=api,
+                                         on_f4=lambda: None)
+        source.start(timeout=1.0)
+        source.stop(timeout=1.0)
+        self.assertEqual(api.hotkeys_registered,
+                         [(api.hwnd, raw_mouse.HOTKEY_F4_ID,
+                           raw_mouse.MOD_NOREPEAT, raw_mouse.VK_F4)])
+        self.assertEqual(api.hotkeys_unregistered,
+                         [(api.hwnd, raw_mouse.HOTKEY_F4_ID)])
 
     def test_hotkey_can_request_stop_from_message_thread(self) -> None:
         api = FakeMessageApi()

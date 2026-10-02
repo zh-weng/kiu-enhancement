@@ -87,7 +87,8 @@ def listening_pid(port: int = 24689) -> int | None:
     the port.
     """
     import subprocess
-    out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True).stdout
+    out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True,
+                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
     for line in out.splitlines():
         parts = line.split()
         if (len(parts) >= 5 and parts[0].upper() == "TCP"
@@ -110,7 +111,8 @@ def find_process(image: str = "azahar.exe", port: int = 24689) -> int:
     import subprocess
     out = subprocess.run(
         ["tasklist", "/FI", f"IMAGENAME eq {image}", "/FO", "CSV", "/NH"],
-        capture_output=True, text=True).stdout
+        capture_output=True, text=True,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
     pids = [int(line.split('","')[1]) for line in out.splitlines()
             if line.startswith('"') and '","' in line]
     if not pids:

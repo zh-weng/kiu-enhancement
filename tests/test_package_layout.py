@@ -14,6 +14,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PackageLayoutTests(unittest.TestCase):
+    def test_launcher_import_is_platform_neutral_and_has_no_gui_side_effects(self):
+        script = """
+import sys
+sys.path.insert(0, sys.argv[1])
+from kiu import launcher
+assert callable(launcher.main)
+assert not any(name.startswith(('kiu.backends.windows.', 'kiu.patches.',
+                                'kiu.experimental.', 'tkinter')) for name in sys.modules)
+assert not {'capstone', 'keystone'}.intersection(sys.modules)
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [sys.executable, "-c", script, str(ROOT / "src")], cwd=directory,
+                capture_output=True, text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_cli_clean_import_does_not_load_host_or_patch_backends(self):
         script = """
 import sys

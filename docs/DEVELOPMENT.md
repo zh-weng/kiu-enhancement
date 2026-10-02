@@ -5,57 +5,56 @@ Python 3.11+，从仓库根目录执行：
 ```sh
 python -m pip install -e .
 python -m unittest discover -s tests
+python run_launcher.py
 ```
 
-纹理开发工具另需 `python -m pip install -e ".[assets]"`；运行时鼠标不依赖 numpy/Pillow。
-运行包位于 `src/kiu/`；安装后推荐 `kiu-enhance` 或 `python -m kiu`，
-未安装时源码入口为 `python run_kiu.py`。
-研究工具位于 `tools/dev/`，用模块方式运行，不直接执行旧目录下的脚本。
+安装后 GUI 入口为 `kiu-launcher`，CLI 为 `kiu-enhance` 或 `python -m kiu`。
+未安装时源码 CLI 用 `python run_kiu.py`。运行包位于 `src/kiu/`，
+研究工具在 `tools/dev/`，用 `python -m tools.dev.NAME`，不直接执行单文件。
+纹理开发另需 `python -m pip install -e ".[assets]"`；玩家 EXE 不需要这些环境。
 
-## 无 ROM 测试
+## 无游戏测试与 GUI 自检
 
-hook 生成、反汇编契约、FakeGdb 安装/恢复/拒绝未知字节、ABI 和打包测试不需要游戏。
-只有私人原始镜像逐字节检查可以在缺少镜像时跳过；不得将核心测试整体跳过。
-Windows 专有后端测试在其他平台明确跳过。CI 和本机离线测试不能替代模拟器实机验收。
-完整生成器测试使用 macOS Intel；Apple Silicon 的 Keystone 依赖另需验证，
-无第三方依赖的核心测试不代表该架构完整补丁生成或输入支持。
+安装/恢复/拒绝未知字节、hook、冻结 payload、ABI、构建验证与打包测试不需要 ROM。
+只有私人原始镜像逐字节检查在缺少镜像时跳过，不得跳过核心回归。
+Windows 专有后端测试在其他平台明确跳过；CI 与离线测试不能代替模拟器战斗验收。
+macOS Intel 的生成器测试不表示 Apple Silicon 的 Keystone 或原生输入已经兼容。
 
-## 可选的私人镜像检查
+```sh
+python run_launcher.py --self-test --settings local/launcher-qa/preferences.json
+```
+
+GUI 自检构造界面并验证 hook 依赖，不启动游戏；QA 设置使用本地路径，不加载真实用户偏好。
+格式规则、扫描工具局限、原生瞄准链与回归要求统一见 [知识库](KNOWLEDGE.md)。
+
+## 生成 Windows 玩家包
+
+在 Windows 构建；固定 PyInstaller 版本，不修改已有 Python 环境：
+
+```sh
+python -m pip install --target local/build-tools pyinstaller==6.22.3
+python tools/build_launcher.py --check
+python tools/build_launcher.py
+```
+
+输出 `local/releases/kiu-launcher-windows-preview.zip`。
+spec、缓存和 generated hook payload 在 `local/build/launcher/`，不提交。
+构建从 ARM 源生成三个固定 hook，与 canonical 清单比对；冻结运行不依赖 Keystone。
+脚本检查 Tcl/Tk、Capstone、许可与发行边界，再以独立 QA 设置运行 EXE 自检后打包。
+不包含游戏、模拟器、个人设置或研究目录，不能把打包成功称为战斗验收完成。
+CI 的手动 `build_windows_launcher` 开关可执行同一流程，不自动创建 Release。
+
+## 附属源码与私人校验
 
 ```sh
 python -m tools.dev.prepare_kiu /path/to/your/decrypted-game.cci
 python run_kiu.py verify-build local/extracted/exefs_code.bin
 python run_kiu.py export-cheats -- --verify-code local/extracted/exefs_code.bin
-python -m unittest discover -s tests
-```
-
-输出在忽略的 `local/`，不覆盖 `manifests/title.json`。
-只支持已确认构建的 NoCrypto CCI；不提供解密能力，也不支持压缩 ExeFS code。
-
-只读分析示例：
-
-```sh
-python -m tools.dev.inspect_arm_static --range 0x00703fe0 0x00704008
-python -m tools.dev.find_arm_mem_refs --help
-python -m tools.dev.armscan --help
-python -m tools.dev.extract_kiu_textures --help
-```
-
-格式规则、扫描工具局限、原生瞄准链和修改验证原则集中在 [知识库](KNOWLEDGE.md)。
-新增 backend 保持 guest-VA 读写、counts、物理像素坐标和关闭/失焦语义；
-guest ABI 变更必须升级版本、指纹与兼容测试。
-每个修复需要确定性回归，并与同状态同输入的 Azahar baseline 比较最早分歧。
-
-## 生成发行候选
-
-```sh
 python tools/build_release.py --check
 python tools/build_release.py
 ```
 
-输出在 `local/releases/`。验证白名单、依赖、包内知识库、Enable/Restore 金手指及校验清单。
-在不含 `local/` 的干净目录安装并运行测试，不依赖研究机环境或私人路径。
-发行物不捆绑模拟器、不改用户全局配置，不含游戏素材、代码、存档或私人研究。
-Windows 独立可执行文件暂未实现；当前交付形态是源码包 + 生成的金手指。
-核对 [当前状态](../STATUS.md) 的 preview/experimental 标签，打包成功不能写成产品验收完成。
-GitHub 推送或创建 Release 需用户另行授权。
+提取输出只在忽略的 `local/`，不覆盖公开清单；仅支持已确认 NoCrypto 构建，不提供解密能力。
+源码发行物需在无 `local/` 的干净目录安装测试；源码包与 wheel 是开发者附属，不代替玩家 EXE。
+每个修复仍需确定性回归与相同状态/输入的 Azahar baseline。
+ABI 改动必须升级版本、指纹与兼容测试。GitHub 推送和 Release 需另行授权。

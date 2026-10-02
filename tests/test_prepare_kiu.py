@@ -48,6 +48,13 @@ def container(code=b"\x1e\xff\x2f\xe1", *, compressed=False, bad_superblock=Fals
 
 
 class PrepareTests(unittest.TestCase):
+    def test_ncsd_partition_offsets_and_sizes_are_interleaved(self):
+        pairs = [(32, 3299779), (3299811, 1985), *((0, 0),) * 6]
+        table = b"".join(struct.pack("<II", *pair) for pair in pairs)
+        self.assertEqual(prepare.parse_ncsd_partitions(table), tuple(pairs))
+        with self.assertRaisesRegex(ValueError, "truncated"):
+            prepare.parse_ncsd_partitions(table[:-1])
+
     def extract(self, root, data):
         source = root / "private" / "my-dump.cci"
         source.parent.mkdir()

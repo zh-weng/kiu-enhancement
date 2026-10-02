@@ -44,7 +44,6 @@ import time
 
 from capstone import CS_ARCH_ARM, CS_MODE_ARM, Cs
 from capstone.arm import ARM_OP_MEM, ARM_REG_PC
-from keystone import KS_ARCH_ARM, KS_MODE_ARM, Ks
 
 from ..gdbclient import GdbClient
 
@@ -165,6 +164,15 @@ LDR_POOL_INDEX = (1, 3)      # the two `ldr rX, [pc, ...]`, in order
 
 
 def assemble_hook() -> bytes:
+    if getattr(sys, "frozen", False):
+        import kiu_launcher_payloads as payloads
+        if payloads.BUILD_SHA256 != CODE_SHA256:
+            raise RuntimeError("frozen reticle hook targets an unsupported build")
+        blob = payloads.RETICLE_HOOK
+        _check_pool(blob)
+        return blob
+    from keystone import KS_ARCH_ARM, KS_MODE_ARM, Ks
+
     ks = Ks(KS_ARCH_ARM, KS_MODE_ARM)
     a = b = 0
     for _ in range(5):
@@ -255,6 +263,15 @@ def late_original() -> bytes:
 
 
 def assemble_late_hook() -> bytes:
+    if getattr(sys, "frozen", False):
+        import kiu_launcher_payloads as payloads
+        if payloads.BUILD_SHA256 != CODE_SHA256:
+            raise RuntimeError("frozen late reticle hook targets an unsupported build")
+        blob = payloads.RETICLE_LATE_HOOK
+        _check_late_pool(blob)
+        return blob
+    from keystone import KS_ARCH_ARM, KS_MODE_ARM, Ks
+
     ks = Ks(KS_ARCH_ARM, KS_MODE_ARM)
     a = b = 0
     for _ in range(5):
@@ -267,6 +284,11 @@ def assemble_late_hook() -> bytes:
     else:
         raise RuntimeError("late literal pool offsets did not settle")
     blob = body + struct.pack("<II", MAILBOX_VA, MAGIC)
+    _check_late_pool(blob)
+    return blob
+
+
+def _check_late_pool(blob: bytes) -> None:
     md = Cs(CS_ARCH_ARM, CS_MODE_ARM)
     md.detail = True
     targets = [insn.address + 8 + op.mem.disp
@@ -277,10 +299,11 @@ def assemble_late_hook() -> bytes:
     if targets != [pool, pool + 4]:
         raise RuntimeError(
             f"late literal loads reach {[hex(t) for t in targets]}, pool {hex(pool)}")
+    if struct.unpack_from("<II", blob, len(blob) - 8) != (MAILBOX_VA, MAGIC):
+        raise RuntimeError("late pool words are not the mailbox address and magic")
     first = next(md.disasm(blob, LATE_HOOK_VA))
     if first.bytes != late_original():
         raise RuntimeError("the displaced instruction is not first in the cave")
-    return blob
 
 
 def encode_branch(site: int, target: int, link: bool = True) -> bytes:

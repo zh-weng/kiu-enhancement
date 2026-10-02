@@ -19,15 +19,17 @@ import argparse
 import ctypes
 import ctypes.wintypes
 import json
+import math
 import os
 import struct
 import sys
 import threading
 import time
 from pathlib import Path
+from typing import Callable
 
 from ...gdbclient import GdbClient
-from .guest_memory import GuestMemory, nonce_bytes
+from .guest_memory import GuestMemory, listening_pid, nonce_bytes
 from .win_raw_mouse import RawMouseInput
 from ...aim_protocol import validate_mailboxes
 from ...aim_core import as_float, map_point, sense
@@ -47,7 +49,8 @@ SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 78, 79
 CACHE = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local"))) / "KIUEnhancements/guest_anchor.json"
 
 
-def anchor_memory(gdb: GdbClient, verbose: bool = True, port: int = 24689) -> GuestMemory:
+def anchor_memory(gdb: GdbClient, verbose: bool = True, port: int = 24689,
+                  expected_pid: int | None = None) -> GuestMemory:
     """Find where the mailboxes live in the host, reusing a cached offset.
 
     The cached offset is always re-verified against a fresh nonce.  It does go
@@ -56,6 +59,9 @@ def anchor_memory(gdb: GdbClient, verbose: bool = True, port: int = 24689) -> Gu
     """
     memory = GuestMemory.attach(port=port)
     try:
+        if expected_pid is not None and memory.pid != expected_pid:
+            raise RuntimeError(f"emulator memory belongs to PID {memory.pid}, "
+                               f"expected PID {expected_pid}; refusing to anchor")
         scratch = aim.MAILBOX_VA + 0x40
         nonce = nonce_bytes(int(time.time()) & 0xFFFF)
         gdb.write_mem(scratch, nonce)
@@ -150,7 +156,24 @@ def mapped_rect(kind: str, span: float, aspect: float,
     return (x + (w - width) / 2.0, y + (h - height) / 2.0, width, height)
 
 
-def main(argv: list[str] | None = None) -> int:
+class _Stopped(Exception):
+    """Cooperative stop, including before raw input has started."""
+
+
+def main(argv: list[str] | None = None, *, stop_event: threading.Event | None = None,
+         status_callback: Callable[[str], None] | None = None,
+         auto_activate: bool = False, wait_for_battle: bool = False,
+         expected_pid: int | None = None) -> int:
+    """Run the CLI or a cancellable GUI worker without changing the guest ABI.
+
+    GUI callers can wait in menus and activate on a focused, live battle. F4
+    remains the user's desired-state switch: explicitly switching off survives
+    later focus changes. The existing process-memory anchor scan is blocking;
+    a stop requested during that scan is honored as soon as it returns.
+    Status callbacks are called on this worker thread, not on the GUI thread.
+    A launcher can bind injection to its own Azahar PID. Port ownership is
+    checked before/after connecting, and the memory handle must match it.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=24689)
     parser.add_argument("--mode", choices=("auto", "look", "point"), default="auto",
@@ -182,9 +205,47 @@ def main(argv: list[str] | None = None) -> int:
                         help="flip vertical look; the default is mouse down "
                              "looks down")
     args = parser.parse_args(argv)
+    if expected_pid is not None and (type(expected_pid) is not int or expected_pid <= 0):
+        raise ValueError("expected_pid must be a positive integer")
+
+    last_status = None
+
+    def notify(status: str) -> None:
+        nonlocal last_status
+        if status == last_status:
+            return
+        last_status = status
+        if status_callback is not None:
+            try:
+                status_callback(status)
+            except Exception:
+                # A closed GUI or a display callback must not skip cleanup.
+                pass
+
+    def check_stop() -> None:
+        if stop_event is not None and stop_event.is_set():
+            raise _Stopped
+
+    def require_owner() -> None:
+        if expected_pid is not None:
+            owner = listening_pid(args.port)
+            if owner != expected_pid:
+                raise RuntimeError(f"GDB port {args.port} belongs to PID {owner}, "
+                                   f"expected PID {expected_pid}; refusing injection")
+
+    def pause(seconds: float) -> None:
+        if stop_event is None:
+            time.sleep(seconds)
+        elif stop_event.wait(seconds):
+            raise _Stopped
+
+    if stop_event is not None and stop_event.is_set():
+        notify("complete")
+        return 0
 
     lock = threading.Lock()
     live = {"on": False, "quit": False, "dx": 0.0, "dy": 0.0,
+            "wanted": auto_activate, "battle_active": False,
             "px": 200.0, "py": 120.0, "counts": 0,
             # Per aiming session, so a fast flick and a slow drag of the same
             # physical distance can be compared directly rather than by feel.
@@ -202,12 +263,19 @@ def main(argv: list[str] | None = None) -> int:
         with lock:
             live["quit"] = True
 
+    notify("connecting")
+    require_owner()
     gdb = GdbClient(port=args.port, timeout=20)
+    gdb_owner_verified = expected_pid is None
     memory = None
     mailboxes_validated = False
     source = None
     was_on = False
     try:
+        check_stop()
+        require_owner()
+        gdb_owner_verified = True
+        check_stop()
         gdb.send("?")
         components = (("rotation-request", aim), ("reticle", pin))
         states = {name: module.status(gdb) for name, module in components}
@@ -228,30 +296,57 @@ def main(argv: list[str] | None = None) -> int:
         pin.set_mode(gdb, 0)
         gdb.cont_all()
 
-        memory = anchor_memory(gdb, port=args.port)
+        check_stop()
+        notify("anchoring")
+        memory = anchor_memory(gdb, port=args.port, expected_pid=expected_pid)
+        if expected_pid is not None and memory.pid != expected_pid:
+            raise RuntimeError(f"anchored memory belongs to PID {memory.pid}, "
+                               f"expected PID {expected_pid}; refusing input writes")
         validate_mailboxes(memory)
         mailboxes_validated = True
         gdb.sock.close()
+        check_stop()
+
+        def clear_inputs() -> None:
+            # A stale/foreign header must not receive even a cleanup write.
+            validate_mailboxes(memory)
+            memory.write(aim.MAILBOX_VA + aim.MB_GATE, struct.pack("<I", 0))
+            memory.write(aim.MAILBOX_VA + aim.MB_YAW, struct.pack("<ff", 0.0, 0.0))
+            memory.write(pin.MAILBOX_VA + pin.MB_MODE, struct.pack("<I", 0))
+
+        def dimensions() -> tuple[float, float]:
+            return (
+                as_float(struct.unpack("<I", memory.read(pin.MAILBOX_VA + pin.MB_W, 4))[0]),
+                as_float(struct.unpack("<I", memory.read(pin.MAILBOX_VA + pin.MB_H, 4))[0]),
+            )
+
+        def valid_dimensions(size: tuple[float, float]) -> bool:
+            return all(math.isfinite(value) and value > 0.0 for value in size)
 
         # Settle on a mode before starting, but keep watching: a session that
         # runs from an air battle into a ground one has to follow it.
         seen_calls, sensed = sense(memory)
-        if args.mode == "auto":
+        last_activity = float("-inf")
+        saw_battle = False
+        if args.mode == "auto" and not wait_for_battle:
             for _ in range(20):
+                check_stop()
                 calls, sensed = sense(memory)
                 if calls != seen_calls:
+                    last_activity = time.perf_counter()
+                    seen_calls = calls
+                    saw_battle = True
                     break
                 seen_calls = calls
-                time.sleep(0.1)
+                pause(0.1)
             else:
                 print("[aim] the reticle hook is not being called -- no battle "
                       "is running; assuming " + sensed)
         live["mode"] = sensed if args.mode == "auto" else args.mode
         mode = live["mode"]
-        width = as_float(struct.unpack("<I", memory.read(pin.MAILBOX_VA + pin.MB_W, 4))[0])
-        height = as_float(struct.unpack("<I", memory.read(pin.MAILBOX_VA + pin.MB_H, 4))[0])
+        width, height = dimensions()
         centre = (width / 2.0, height / 2.0)
-        if live["mode"] == "point" and not (width > 0 and height > 0):
+        if live["mode"] == "point" and not valid_dimensions((width, height)) and not wait_for_battle:
             raise RuntimeError("the reticle hook has not seen a frame yet; "
                                "is a battle actually running?")
 
@@ -325,28 +420,30 @@ def main(argv: list[str] | None = None) -> int:
 
         def on_f4() -> None:
             with lock:
-                if not live["on"] and not focused():
+                if not live["wanted"] and not focused():
                     print("[aim] the emulator window is not focused; not aiming")
                     return
-                live["on"] = not live["on"]
+                live["wanted"] = not live["wanted"]
                 live["dx"] = live["dy"] = 0.0
                 if live["mode"] == "look" or args.mapping == "relative":
                     live["px"], live["py"] = centre
-                if live["on"]:
+                if live["wanted"]:
                     live["session_counts"] = 0
                     live["session_travel"] = 0.0
                     live["session_demanded"] = 0.0
                     live["session_start"] = time.perf_counter()
                 else:
                     report_session()
+                    live["on"] = False
 
         rect = (0.0, 0.0, 1.0, 1.0)
-        if args.mapping != "relative":
+        if args.mapping != "relative" and valid_dimensions((width, height)):
             rect = mapped_rect(args.mapping, args.map_span, height / width, pid=memory.pid)
 
+        check_stop()
         try:
             source = RawMouseInput(on_delta, on_f4=on_f4,
-                                   on_escape=on_escape).start(timeout=5.0)
+                                   on_escape=on_escape if stop_event is None else None).start(timeout=5.0)
         except RuntimeError as exc:
             # The usual cause is a second copy of this tool holding F4, which
             # surfaces as an opaque WinError 1409 several frames down.
@@ -356,7 +453,9 @@ def main(argv: list[str] | None = None) -> int:
                     "this tool is probably still running; quit it with ESC "
                     "first") from exc
             raise
-        if live["mode"] == "look":
+        if not valid_dimensions((width, height)):
+            print("[aim] waiting for a battle; input gates remain off")
+        elif live["mode"] == "look":
             print(f"[aim] LOOK (ground): {args.sensitivity:g} rad per count "
                   f"({args.sensitivity*57.2958:.3f} deg)")
         elif args.mapping == "relative":
@@ -369,34 +468,51 @@ def main(argv: list[str] | None = None) -> int:
                   f"({rx:.0f},{ry:.0f}) {rw:.0f}x{rh:.0f} maps onto "
                   f"{width:g}x{height:g}, centre to centre "
                   f"({rw/width:.1f} desktop px per reticle px)")
-        print(f"[aim] {args.hz:g} Hz through process memory. F4 = aim, ESC = quit. "
+        quit_label = "ESC = quit" if stop_event is None else "stop from the launcher"
+        print(f"[aim] {args.hz:g} Hz through process memory. F4 = aim, {quit_label}. "
               "The cursor is not moved and no button is held.")
 
         period = 1.0 / max(args.hz, 1.0)
         report = time.perf_counter()
-        last_sense = report
+        last_sense = float("-inf")
         sensed_calls = seen_calls
         sent = 0
         while True:
+            check_stop()
             now = time.perf_counter()
-            if args.mode == "auto" and now - last_sense >= 0.25:
+            if now - last_sense >= 0.25:
+                validate_mailboxes(memory)
                 last_sense = now
                 calls, sensed = sense(memory)
-                if calls != sensed_calls and sensed != live["mode"]:
+                size = dimensions()
+                progressed = calls != sensed_calls
+                if progressed:
+                    last_activity = now
+                    saw_battle = True
+                active = valid_dimensions(size) and now - last_activity < 1.0
+                next_mode = sensed if args.mode == "auto" else args.mode
+                if active and (next_mode != live["mode"] or size != (width, height)):
                     # Stand the old injection down before the new one starts,
                     # or a stale gate keeps feeding a mode nobody is in.
-                    memory.write(aim.MAILBOX_VA + aim.MB_GATE, struct.pack("<I", 0))
-                    memory.write(aim.MAILBOX_VA + aim.MB_YAW, struct.pack("<ff", 0.0, 0.0))
-                    memory.write(pin.MAILBOX_VA + pin.MB_MODE, struct.pack("<I", 0))
+                    clear_inputs()
+                    width, height = size
+                    centre = (width / 2.0, height / 2.0)
+                    if args.mapping != "relative":
+                        rect = mapped_rect(args.mapping, args.map_span,
+                                           height / width, pid=memory.pid)
                     with lock:
-                        live["mode"] = sensed
+                        live["mode"] = next_mode
+                        live["on"] = False
+                        live["dx"] = live["dy"] = 0.0
                         live["px"], live["py"] = centre
                     was_on = False
                     print(f"[aim] battle type changed -> "
                           f"{'LOOK (ground)' if sensed == 'look' else 'POINT (air)'}")
+                with lock:
+                    live["battle_active"] = active
                 sensed_calls = calls
 
-            if live["mode"] == "point" and args.mapping != "relative":
+            if live["battle_active"] and live["mode"] == "point" and args.mapping != "relative":
                 cx, cy = cursor_position()
                 with lock:
                     live["px"], live["py"] = map_point(rect, width, height, (cx, cy))
@@ -406,18 +522,40 @@ def main(argv: list[str] | None = None) -> int:
                     if live["on"]:
                         report_session()
                     break
-                on = live["on"]
+                wanted = live["wanted"]
+                active = live["battle_active"]
                 dx, dy = live["dx"], live["dy"]
                 live["dx"] = live["dy"] = 0.0
                 px, py = live["px"], live["py"]
 
-            if on and not focused():
-                on = False
+            has_focus = focused() if wanted and active else False
+            on = bool(wanted and active and has_focus)
+            if wanted and active and not has_focus and not auto_activate:
+                # Preserve the CLI's manual re-enable after focus loss.
                 with lock:
-                    live["on"] = False
-                    report_session()
+                    live["wanted"] = False
+            with lock:
+                live["on"] = on
+                if not on:
+                    live["dx"] = live["dy"] = 0.0
 
             if on != was_on:
+                validate_mailboxes(memory)
+                if on:
+                    with lock:
+                        live["session_counts"] = 0
+                        live["session_travel"] = 0.0
+                        live["session_demanded"] = 0.0
+                        live["session_start"] = now
+                        if args.mapping == "relative" or live["mode"] == "look":
+                            live["px"], live["py"] = centre
+                            px, py = centre
+                    if live["mode"] == "point" and args.mapping != "relative":
+                        rect = mapped_rect(args.mapping, args.map_span,
+                                           height / width, pid=memory.pid)
+                        px, py = map_point(rect, width, height, cursor_position())
+                else:
+                    report_session()
                 if live["mode"] == "look":
                     memory.write(aim.MAILBOX_VA + aim.MB_GATE,
                                  struct.pack("<I", 1 if on else 0))
@@ -433,7 +571,10 @@ def main(argv: list[str] | None = None) -> int:
                 print("[aim] AIMING" if on else "[aim] off")
                 was_on = on
 
+            notify("active" if on else "off" if not wanted else
+                   "inactive" if saw_battle else "waiting")
             if on:
+                validate_mailboxes(memory)
                 if live["mode"] == "look" and (dx or dy):
                     # Read/add/write preserves pending travel only if the guest
                     # does not consume between these calls. This exchange is
@@ -470,8 +611,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[aim] {'on ' if on else 'off'} packets={sent} "
                       f"counts={counts} {tail}")
                 sent, report = 0, now
-            time.sleep(period)
-    except KeyboardInterrupt:
+            pause(period)
+    except (KeyboardInterrupt, _Stopped):
         pass
     finally:
         if source is not None:
@@ -482,6 +623,7 @@ def main(argv: list[str] | None = None) -> int:
         if memory is not None:
             try:
                 if mailboxes_validated:
+                    validate_mailboxes(memory)
                     memory.write(aim.MAILBOX_VA + aim.MB_GATE, struct.pack("<I", 0))
                     memory.write(aim.MAILBOX_VA + aim.MB_YAW, struct.pack("<ff", 0.0, 0.0))
                     memory.write(pin.MAILBOX_VA + pin.MB_MODE, struct.pack("<I", 0))
@@ -493,12 +635,14 @@ def main(argv: list[str] | None = None) -> int:
                 except BaseException:
                     pass
         try:
-            gdb.cont_all()
+            if gdb_owner_verified:
+                gdb.cont_all()
         except BaseException:
             pass
         finally:
             gdb.sock.close()
     print("[aim] done")
+    notify("complete")
     return 0
 
 

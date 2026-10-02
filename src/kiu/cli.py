@@ -29,17 +29,26 @@ def modules():
 
 
 @contextmanager
-def guest_session(port: int):
+def guest_session(port: int, *, timeout: float = 20):
     from .gdbclient import GdbClient
-    gdb = GdbClient(port=port, timeout=20)
+    gdb = GdbClient(port=port, timeout=timeout)
+    failure = None
     try:
         stop = gdb.send("?")
         if not stop.startswith(("S", "T")):
             raise RuntimeError(f"GDB did not report a stopped guest: {stop!r}")
         yield gdb
+    except BaseException as exc:
+        failure = exc
+        raise
     finally:
         try:
             gdb.cont_all()
+        except Exception as exc:
+            if failure is None:
+                raise
+            # Do not turn an unknown-byte refusal into a retryable I/O error.
+            failure.add_note(f"GDB resume also failed: {exc}")
         finally:
             gdb.sock.close()
 

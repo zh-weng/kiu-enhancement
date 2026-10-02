@@ -1,5 +1,13 @@
 name: Source checks
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      build_windows_launcher:
+        description: Build and self-test the Windows preview launcher
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -33,3 +41,15 @@ jobs:
       - run: python -m unittest discover -s tests -p test_aim_core.py
       - run: python -m unittest discover -s tests -p test_asset_formats.py
       - run: python -m unittest discover -s tests -p test_gdbclient.py
+  windows-launcher:
+    if: github.event_name == 'workflow_dispatch' && inputs.build_windows_launcher
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - run: python -m pip install --target local/build-tools pyinstaller==6.22.3
+      - run: python tools/build_launcher.py --check
+      - run: python tools/build_launcher.py

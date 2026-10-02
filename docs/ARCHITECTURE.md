@@ -1,34 +1,35 @@
 # 分发形态
 
-当前选择：官方 Azahar + 轻量控制工具，不要求模拟器 fork。
-发行候选是源码 preview 与可单独使用的金手指；不包含游戏或模拟器。
-独立可执行文件、自动启动 Azahar、独立 profile 管理尚未实现。
+主要交付是 Windows 独立 `KIU Launcher` 的 onedir ZIP：可执行文件、`_internal`、
+当前知识与说明、兼容元数据及第三方许可。用户不需要安装 Python，也不捆绑 Azahar 或游戏。
+源码 ZIP、wheel、CLI 和金手指作为附属工具保留，不以维护模拟器 fork 为前提。
 
-## 运行与注入
+## 会话与注入
 
-安装后推荐 `kiu-enhance` 或 `python -m kiu`；未安装的源码入口为 `python run_kiu.py`。
-GDB 负责验证、安装和恢复客体 hook；实时鼠标写入使用独立数据通道。
-当前 Windows 后端实现输入、窗口查询与 process-memory transport。
-用户自行启动游戏和启用调试接口；工具不覆盖游戏文件或全局配置。
+GUI 负责选择文件、增强选项和自己的本地偏好。
+`launcher_core.py` 先只读验证完整游戏构建，再以命令行端口参数启动用户提供的 Azahar。
+等待 game/scheduler 就绪，验证端口属于本次进程，并校验补丁字节后安装增强。
+鼠标在战斗与焦点条件满足时自动启用；GDB 安装与实时 mailbox 写入分离。
+停止/关闭启动器时只恢复本次安装的补丁，不关闭 Azahar，不覆盖未知字节或已有补丁。
 
-游戏机制、补丁站点、mailbox ABI、注入顺序、JIT 注意事项与后续 BPS/RPC 候选，
-统一见 [知识库](KNOWLEDGE.md#7-注入与跨平台边界)。
-完整支持范围见 [当前状态](../STATUS.md)，使用步骤见 [README](../README.md)。
+当前 Windows 程序使用 Tk GUI 和延迟加载宿主后端，不增加后台服务或跨平台 GUI 框架。
+代码安装、JIT、mailbox、游戏机制和生命周期限制统一见 [知识库](KNOWLEDGE.md)。
+完整支持范围见 [当前状态](../STATUS.md)，玩家步骤见 [README](../README.md)。
 
-## 源码边界
+## 源码与冻结边界
 
-- `src/kiu/`：正式运行包与统一 CLI，包含平台无关瞄准核心、协议、导出及 GDB 通道。
-- `src/kiu/patches/`：当前核心补丁；`experimental/`：菜单路由与俯仰实验，不默认安装。
-- `src/kiu/backends/windows/`：延迟加载的 Windows 宿主实现。
-- `tools/dev/`：提取、资产解析及只读 ARM 分析，不混进用户运行入口。
-- `tools/build_release.py`：白名单打包；`manifests/`：公开兼容与补丁元数据。
+- `src/kiu/`：Launcher、CLI、只读构建验证及平台无关核心/协议。
+- `src/kiu/patches/`：当前核心增强；`experimental/`：菜单/俯仰实验，不进入玩家 Launcher。
+- `src/kiu/backends/windows/`：Windows 输入、窗口与数据通道。
+- `tools/dev/`：提取、资产和 ARM 分析；`tools/build_launcher.py`：玩家包构建。
 
-Linux/macOS 可替换宿主后端而不改变 guest hook 与 ABI；两平台鼠标后端尚未实现。
-不能把平台无关接口或 CI 配置当作三平台原生输入已可用的证明。
+冻结构建预先生成项目自写 ARM hook，并与 canonical 清单精确比对；运行时仍核对 build hash、
+Capstone 契约和客体字节。Keystone 仅用于构建，不把其运行库塞进玩家包。
+客体 hook 与 mailbox ABI 不变；Linux/macOS 后端与 Launcher 尚未实现，不宣称三平台可用。
 
 ## 发布边界
 
-运行包与开发工具使用同一份源码，不增加后台服务、账号或复杂 GUI。
-发布包按白名单构建，不压缩整个目录或携带 `.git` 与私人 `local/` 内容。
-MIT 仅覆盖项目代码；第三方依赖、Azahar 与 Nintendo 内容保留各自权利。
-本地整理和生成源包不代表已推送或已发布 GitHub Release。
+构建结果与缓存在忽略的 `local/`。玩家包只采集新生成的 onedir 与公开文件白名单，
+源包另用白名单构建，不压缩整个项目、私人研究或 `.git`。
+项目代码是 MIT，Python/Tcl/Tk、Capstone 和冻结工具的声明随包保留。
+本地构建不代表已发布 GitHub Release；推送与发布仍需用户授权。

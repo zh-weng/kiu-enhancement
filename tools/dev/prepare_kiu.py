@@ -106,6 +106,13 @@ def parse_smdh(icon):
     return {"names": names[:4], "regions": regions}
 
 
+def parse_ncsd_partitions(table: bytes):
+    """Eight interleaved (offset, size) pairs, in 0x200-byte media units."""
+    if len(table) != 0x40:
+        raise ValueError("truncated NCSD partition table")
+    return tuple(struct.iter_unpack("<II", table))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("cci", type=Path, help="path to your decrypted CCI/3DS dump")
@@ -127,9 +134,8 @@ def main(argv=None):
         fh.seek(0x108)
         ncsd_title_id = struct.unpack("<Q", fh.read(8))[0]
         fh.seek(0x120)
-        part_offs = struct.unpack("<8I", fh.read(32))
-        part_sizes = struct.unpack("<8I", fh.read(32))
-        game_base = part_offs[0] * MEDIA_UNIT
+        partitions = parse_ncsd_partitions(fh.read(0x40))
+        game_base = partitions[0][0] * MEDIA_UNIT
         print(f"[1/6] NCSD ok, game partition @ {game_base:#x}")
 
         fh.seek(game_base + 0x100)

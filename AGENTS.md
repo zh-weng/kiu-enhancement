@@ -37,6 +37,7 @@ The research workstation may use a local conda `kiu` environment; never hard-cod
 Runtime code belongs in `src/kiu/`: platform-neutral core/protocol, `patches/`, lazy host `backends/`, and explicitly opt-in `experimental/`.
 Development extraction/analysis tools belong in `tools/dev/`; run them as `python -m tools.dev.NAME`.
 Keep `python run_kiu.py`, installed `kiu-enhance`, and `python -m kiu` as equivalent public CLI entry points.
+The player entry point is `run_launcher.py` / installed `kiu-launcher`, packaged as a Windows onedir Launcher. Its session must verify the user-owned game before launch, bind to the launched Azahar PID, and restore only patches owned by that session. Never close the emulator or overwrite its configuration on Launcher exit.
 
 `prepare_kiu.py` accepts a user-owned decrypted CCI. It verifies the exheader and ExeFS superblock hashes.
 ExeFS entry offsets are bytes; the table has ten 0x10-byte entries. Per-file hashes on the known decrypted dump reflect ciphertext and do not match; do not present them as proof of corruption or proof of integrity.

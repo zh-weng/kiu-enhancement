@@ -27,6 +27,7 @@ def find_azahar(pid: int | None = None) -> int:
         output = subprocess.run(
             ["tasklist", "/FI", "IMAGENAME eq azahar.exe", "/FO", "CSV", "/NH"],
             capture_output=True, text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         ).stdout
         for row in csv.reader(io.StringIO(output)):
             if len(row) >= 2 and row[0].casefold() == "azahar.exe":

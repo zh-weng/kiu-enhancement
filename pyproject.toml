@@ -17,6 +17,9 @@ assets = ["Pillow>=10"]
 [project.scripts]
 kiu-enhance = "kiu.cli:main"
 
+[project.gui-scripts]
+kiu-launcher = "kiu.launcher:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["kiu*"]

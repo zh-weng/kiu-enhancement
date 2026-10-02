@@ -1,86 +1,49 @@
-# KIU Enhancements
+# KIU Launcher
 
-Kid Icarus: Uprising 的 Azahar 增强工具：真 60 FPS、透视宽屏，以及预览中的原生鼠标瞄准。
-配合官方 Azahar 使用，不捆绑游戏或修改版模拟器。项目代码采用 MIT。
+Kid Icarus: Uprising 的 Windows 启动器：真 60 FPS、透视宽屏，以及预览中的原生鼠标瞄准。
+配合官方 Azahar 使用，不捆绑游戏或模拟器；项目代码采用 MIT。
 
-只支持 **USA v0**：TitleID `0004000000030100`、产品码 `CTR-P-AKDE`。
-其他地区、更新或未知修改后的代码不兼容，准确 hash 见 [构建清单](manifests/title.json)。
+唯一支持 **USA v0**：TitleID `0004000000030100`、产品码 `CTR-P-AKDE`。
+启动器核对完整已解密 CCI 和代码 hash，其他地区、更新、加密或修改镜像会被拒绝。
+准确身份见 [构建清单](manifests/title.json)。
 
-| 功能 | 支持情况 |
+## 普通玩家使用
+
+1. 解压整个 `kiu-launcher-windows-preview.zip`，运行 `KIU Launcher.exe`。无需安装 Python；保留旁边的 `_internal` 文件夹。
+2. 首次选择官方 `azahar.exe` 和自己提供的已解密游戏文件（CCI/3DS）。
+3. 选择 60 FPS、原始比例/16:9/21:9，以及是否启用原生鼠标。
+4. 点击「开始游戏」。启动器验证文件、启动 Azahar、等待游戏初始化并安装所选增强；进入战斗且窗口有焦点时自动启用鼠标。
+5. 「停止并恢复增强」关闭输入并恢复本次安装的补丁，**不关闭 Azahar**。
+
+启动器会保存自己的本地选项，之后可直接开始。完整镜像验证和首次鼠标内存定位需要一些时间，可点击停止取消。
+不要同时运行其他 GDB 客户端或相同补丁的持续金手指；默认调试端口 `24689` 需空闲且不暴露到不可信网络。
+宽屏选项改变游戏投影，不自动调整模拟器布局；Azahar 显示区域比例需与选项匹配。
+停止后若要再次从启动器开始，先自行关闭仍运行的 Azahar；当前不重新接管已经停止的会话。
+
+## 当前边界
+
+| 功能 | 状态 |
 | --- | --- |
-| 真 60 FPS、16:9 / 21:9 战斗宽屏 | 已有模拟器运行验收；可以仅用金手指 |
-| 原生鼠标 | Windows preview；陆战转镜头，空战控制准星 |
-| 菜单下屏移上屏 | 实验；无拉伸铺满与触控联动未完成 |
-| Linux/macOS 鼠标 | 尚未实现；已保留平台无关核心与后端接口 |
+| 真 60 FPS、16:9 / 21:9 战斗宽屏 | 已有模拟器运行验收 |
+| Windows Launcher | preview；自动验证、启动、安装与会话内恢复 |
+| 原生鼠标 | preview；陆战转镜头，空战控制准星 |
+| 菜单下屏移上屏 / 无拉伸铺满 | 实验或未完成，不在 Launcher 中提供 |
+| Linux/macOS Launcher 与鼠标 | 尚未实现；平台无关核心与接口已保留 |
 
-## 安装
+F4 暂停/恢复鼠标，不撤销 60 FPS 或宽屏，也不能代替读档前的停止。
+鼠标 mailbox 仍有时序竞争；即时存档可能带回 hook/gate 或使宿主映射失效，尚无自动恢复。
+**即时读档前先停止增强**；出现未知/混合状态时完整重启游戏，不强制覆盖。
+本轮 Launcher 的界面、打包或离线测试不代表新增战斗、长时间输入或所有 Azahar 版本已完成验收。
+基础运行时检查已验证补丁安装、鼠标菜单待机，以及停止后全部回到原始字节；不等于完整游戏流程验收。
 
-需要 Python 3.11+。在项目目录执行：
+## 开发者与金手指
 
-```sh
-python -m pip install -e .
-python run_kiu.py --help
-```
+源码入口是 `python run_launcher.py`；安装后可用 `kiu-launcher`。
+CLI、源码包和 wheel 是附属开发工具；安装、验证与打包见 [开发说明](docs/DEVELOPMENT.md)。
+只需静态增强也可使用独立 Enable/Restore 金手指，见 [金手指说明](docs/GATEWAY_CHEATS.md)。
+取消勾选不会自动撤销内存写入；同一补丁不要同时由金手指和 Launcher 管理。
 
-安装后推荐使用 `kiu-enhance` 或 `python -m kiu`；源码目录可用 `python run_kiu.py`，参数相同。
+[当前状态](STATUS.md) · [集中知识库](docs/KNOWLEDGE.md) · [分发形态](docs/ARCHITECTURE.md)
 
-## 仅使用 60 FPS / 宽屏金手指
-
-```sh
-python run_kiu.py export-cheats
-```
-
-文件输出到 `local/cheats/`。这一步不需要 ROM，也不改 Azahar 配置。
-在 Azahar 添加所需 Enable 项；取消时要单独执行 Restore，不能只取消勾选。
-具体项目和操作见 [金手指说明](docs/GATEWAY_CHEATS.md)。
-
-## 运行时增强
-
-自行启动 Azahar 和游戏，启用 GDB stub（默认端口 `24689`）。
-至少等游戏完成加载；不要同时运行其他 GDB 客户端或相同补丁的持续金手指。
-调试端口不要暴露到不可信网络。
-
-推荐先检查自己提取的完整代码，再安装增强：
-
-```sh
-python run_kiu.py verify-build /path/to/your/code.bin
-python run_kiu.py status
-python run_kiu.py apply --aspect 1.7777777778
-```
-
-默认 `apply` 安装 60 FPS 和 16:9；21:9 用 `--aspect 2.3333333333`。
-运行时逐点校验补丁字节，未知或混合状态会拒绝覆盖；局部指纹不代替完整 SHA256。
-Azahar 显示区域比例应与补丁匹配，工具不会替你拉伸窗口或覆盖布局配置。
-
-### Windows 原生鼠标
-
-进入战斗后运行：
-
-```sh
-python run_kiu.py aim
-```
-
-F4 开关瞄准，Esc 停止 helper。`aim` 自动安装鼠标 hook，不自动安装 FPS/宽屏。
-陆战用相对 Raw Input，空战默认映射桌面光标；参数见 `python run_kiu.py aim -- --help`。
-退出只关闭输入，hook 仍保留。停止 helper 后可完整恢复核心增强：
-
-```sh
-python run_kiu.py restore
-```
-
-鼠标仍有 mailbox 时序竞争，读即时存档后没有自动重连。
-读档前停止 helper，之后重新启动；混合状态应完整重启游戏，不强制覆盖。
-当前 `--map viewport` 只适用于原始 side-by-side 布局，不能自动识别任意 custom layout。
-
-菜单实验须显式 `python run_kiu.py apply --menu-route`，不作为默认稳定功能。
-实验俯仰补丁不在统一入口的默认安装/恢复范围内。
-
-## 更多说明
-
-- [当前状态与限制](STATUS.md)
-- [集中知识库：游戏机制、hook、ABI、格式与验证方法](docs/KNOWLEDGE.md)
-- [分发形态](docs/ARCHITECTURE.md) · [开发与测试](docs/DEVELOPMENT.md)
-
-源码包用白名单生成，不要压缩整个工作目录：私人 `local/` 内容不属于发行物。
-仓库不包含 ROM、游戏素材、提取代码、存档或 Azahar 二进制。
-MIT 只覆盖项目代码，不改变 Nintendo、Azahar 或依赖库的权利与许可证。
+发行物不含 ROM、游戏素材、提取代码、存档、Azahar 或私人设置。
+MIT 只覆盖项目代码；第三方组件保留各自许可证，玩家包随附相关声明。

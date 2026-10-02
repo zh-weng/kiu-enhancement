@@ -110,6 +110,16 @@ class GuestSessionTests(unittest.TestCase):
                     pass
         gdb.sock.close.assert_called_once_with()
 
+    def test_unknown_bytes_remain_primary_if_resume_also_fails(self):
+        gdb = fake_gdb()
+        gdb.cont_all.side_effect = OSError("resume failed")
+        with mock.patch.object(gdbclient, "GdbClient", return_value=gdb):
+            with self.assertRaisesRegex(RuntimeError, "unknown bytes") as caught:
+                with cli.guest_session(24689):
+                    raise RuntimeError("unknown bytes")
+        self.assertIn("GDB resume also failed: resume failed", caught.exception.__notes__)
+        gdb.sock.close.assert_called_once_with()
+
 
 class RuntimeCommandTests(unittest.TestCase):
     def setUp(self):

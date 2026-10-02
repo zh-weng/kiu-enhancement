@@ -1,44 +1,46 @@
 # 当前状态
 
-最近整理：2026-10-02。以实际工具与测试为依据；没有在此次整理中重新进行模拟器实机验收。
+更新：2026-10-02。以实际源码与测试为依据；本轮 Launcher 整理不代表新增模拟器战斗验收。
 
-唯一支持构建：USA v0 / `0004000000030100` / `CTR-P-AKDE`。构建 SHA256 见 `manifests/title.json`。
+唯一支持 USA v0 / `0004000000030100` / `CTR-P-AKDE`，完整 CCI 与代码 SHA256 见 `manifests/title.json`。
 
 | 功能 | 状态 | 当前实现 |
 | --- | --- | --- |
-| 真 60 FPS | 已有运行时验收，用户接受 | scheduler interval 2→0，两个时间通道乘 0.5 |
-| 战斗宽屏 | 已验收；16:9 / 21:9 | 透视投影 X 修正；普通下屏与正交 HUD 不缩放 |
-| 原生鼠标 | Windows preview，完整回归待补 | 陆战 rotation request + 空战 reticle hooks；Raw Input + process-memory |
-| 菜单下屏移上屏 | 实验 | 游戏自己的 render-pass 路由；不是 F9 或 framebuffer copy |
-| 菜单无拉伸铺满 | 未完成 | 原 320 宽版面仍在，触控坐标未联动，个别 Gear/AR 路径未统一 |
-| 俯仰 60° | 实验，不保证最终范围 | 下游还有 limiter，不默认安装 |
-| Linux / macOS 鼠标 | 尚未实现 | 平台无关协议与接口已定义，宿主后端待做 |
+| 真 60 FPS | 已有模拟器运行验收，用户接受 | scheduler 2→0，两个时间通道乘 0.5 |
+| 战斗宽屏 | 已有模拟器验收；16:9 / 21:9 | 透视 X 修正，普通下屏与正交 HUD 不缩放 |
+| Windows Launcher | preview，已做基础运行时验收 | 验证自备 CCI、启动 Azahar、检查所属端口、安装与 owned 恢复 |
+| 原生鼠标 | Windows preview，完整回归待补 | 陆战 rotation request、空战 reticle；Raw Input + process-memory |
+| 菜单移上屏 | 实验，不进入 Launcher | 游戏 render-pass 路由；二维铺满和触控未完成 |
+| 俯仰修改 | 实验，不进入 Launcher | 下游 limiter 仍需确认 |
+| Linux/macOS Launcher 与鼠标 | 尚未实现 | 平台无关核心、ABI 和后端契约已保留 |
 
-## 当前入口
+## 玩家入口
 
-安装后推荐 `kiu-enhance` 或 `python -m kiu`；源码入口为 `python run_kiu.py --help`。
-默认 `apply` 只安装 60 FPS 和 16:9；鼠标/菜单需要显式选择。
-`restore` 恢复当前核心 hook 与菜单路由，不包含实验俯仰补丁。
-金手指生成器同时提供 Enable / Restore，见 `docs/GATEWAY_CHEATS.md`。
+主要交付为 `kiu-launcher-windows-preview.zip`，解压整个目录后运行 `KIU Launcher.exe`。
+首次选择 Azahar 与自己的精确已解密 CCI，选择增强后「开始游戏」；进入战斗且有焦点时自动瞄准。
+F4 暂停鼠标；「停止并恢复增强」只恢复本次安装的补丁，不关闭 Azahar。
+CLI、源码 ZIP、wheel 和金手指留作附属工具，详见 [README](README.md) 与 [开发说明](docs/DEVELOPMENT.md)。
 
-## 已知的发布限制
+本轮已验证 GUI 与冻结 EXE 自检，以及指定构建上的补丁安装、鼠标菜单待机、停止清理。
+停止后 FPS/宽屏/两组鼠标 hook 全部核对为 stock，Azahar 保持运行。
+冷启动参数和 scheduler 60→30 过渡已分别验证并补回归；尚未重新验收完整选关、战斗或长时间输入。
 
-- 陆战输入 mailbox 的 host 读改写与 guest 清零存在竞争；不能宣称零丢包或严格一次消费。
-- 即时存档可能改变宿主映射及携带打开的 gate；没有自动重连。读档前停掉鼠标，读档后重新启动 helper；遇到混合状态须重启游戏。
-- 当前 helper 退出关闭输入，不自动删除 hook。停止 helper 后使用 `restore` 或彻底重启游戏恢复。
-- 空战默认映射桌面；`--map viewport` 只适用于原始 side-by-side 布局假设，不支持任意 custom layout。
-- 新版本 Azahar、不同平台、DPI/多显示器和长时间输入需单独验收。
-- 同一补丁不可同时由反复执行的金手指与控制工具管理。
+## 已知限制
 
-## 发行候选
+- 鼠标 mailbox 的 host 读改写与 guest 清零仍存在竞争，不保证零丢包或严格一次消费。
+- 读即时存档可能改变映射、带回 hook 与打开的 gate；尚无自动重连，读档前停止增强。
+- Launcher 不重新接管已停止的会话；再次开始前自行关闭原 Azahar。未知/混合状态应完整重启游戏。
+- Stop 只恢复本次 owned 补丁；已有补丁保持不变，CLI helper 单独退出也不等于全部恢复。
+- 空战默认映射桌面；viewport 模式仅支持原始 side-by-side 假设，不支持任意 custom layout。
+- 显示布局需与投影比例匹配，Launcher 不直接改 Azahar 布局配置。
+- 新模拟器版本、关卡、DPI/多显示器、长时间输入和读档需要独立运行验收。
+- 不同时使用同一补丁的持续金手指、其他 GDB 客户端或 Launcher 会话。
 
-正式运行代码在 `src/kiu/`，研究工具在 `tools/dev/`；保留统一 CLI 与模块入口。
-公开目录只含当前源码、测试、说明及元数据，技术知识集中在一处。
-源包采用白名单，不打包游戏、私人 `local/`、旧报告或整个物理目录。
-独立可执行文件、自动启动器与 Linux/macOS 原生输入尚未完成。
-当前仅为本地发行候选，没有推送 GitHub 或创建远程 Release。
-`main` 是公开候选分支；`codex/development` 用于后续开发，不发布私人研究分支。
+## 分发与后续
 
-当前有效研究结论集中在 [知识入口](docs/KNOWLEDGE.md)；旧报告不作为公开知识来源。
+玩家包为新生成的 onedir 加当前文档、知识、清单和许可；不捆绑 Azahar、游戏或私人设置。
+固定 hook 在构建时预生成并核对清单，冻结程序不带 Keystone 运行库，guest ABI 不变。
+当前仅为本地发行候选，尚未推送 GitHub 或创建远程 Release。
+有效技术结论统一在 [知识库](docs/KNOWLEDGE.md)。
 
-未来主线：先完成鼠标协议时序与读档恢复验收，再验证平台无关 RPC 后端；不以维护 Azahar fork 为前提。
+后续先完成 Launcher 全流程、鼠标协议时序与读档恢复验收，再验证跨平台后端。

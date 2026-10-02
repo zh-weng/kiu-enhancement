@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TITLE_ID = "0004000000030100"
 DEFAULT_OUTPUT = ROOT / "local/releases/kiu-enhancements-preview-source.zip"
 ROOT_FILES = (
-    "README.md", "STATUS.md", "AGENTS.md", "LICENSE", "pyproject.toml", ".gitignore", ".gitattributes", "run_kiu.py",
+    "README.md", "STATUS.md", "AGENTS.md", "LICENSE", "pyproject.toml", ".gitignore", ".gitattributes", "run_kiu.py", "run_launcher.py",
 )
 DOC_FILES = (
     "docs/ARCHITECTURE.md", "docs/GATEWAY_CHEATS.md",
@@ -34,6 +34,7 @@ PACKAGE_FILES = (
     "src/kiu/__init__.py", "src/kiu/__main__.py", "src/kiu/cli.py",
     "src/kiu/aim_core.py", "src/kiu/aim_protocol.py", "src/kiu/export_cheats.py",
     "src/kiu/gdbclient.py",
+    "src/kiu/launcher.py", "src/kiu/launcher_core.py", "src/kiu/game_build.py",
     "src/kiu/patches/__init__.py", "src/kiu/patches/patch_60fps.py",
     "src/kiu/patches/patch_widescreen.py", "src/kiu/patches/patch_aim_request.py",
     "src/kiu/patches/pin_reticle.py",
@@ -48,7 +49,7 @@ DEV_NAMES = (
     "inspect_arm_static", "kiu_assets", "lz11", "prepare_kiu",
 )
 DEV_FILES = (
-    "tools/__init__.py", "tools/build_release.py",
+    "tools/__init__.py", "tools/build_release.py", "tools/build_launcher.py",
     *(f"tools/dev/{name}.py" for name in DEV_NAMES),
 )
 REQUIRED_FILES = (

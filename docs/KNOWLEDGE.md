@@ -165,7 +165,16 @@ post 同样 resolve target 0，关闭 marker，马上把 width 恢复 320。
 
 ## 7. 注入与跨平台边界
 
-推荐形态是官方 Azahar + 小型 companion；静态功能另有 Enable/Restore 金手指。
+当前主交付是官方 Azahar + Windows 独立 `KIU Launcher`；金手指和 CLI 为附属工具。
+`game_build.py` 只读验证 CCI 容器、身份、完整 source/code hash，不提取或写出游戏数据。
+`launcher_core.py` 启动所选 Azahar、检查端口属于本次进程，等待 scheduler 就绪后安装增强。
+实际启动验证中，官方 Azahar `2126.1.1` 拒绝 `--gdbport`；`-g PORT` 能启动且端口 PID 匹配，
+因此 core 使用 `-g`。这不代表所有旧版本均兼容，也不替代完整游戏流程验收。
+冷启动观察到非空 scheduler 的 nominal 从 `60` 过渡到 `30`；仅在 FPS 静态字节全部 stock、
+其他组件也通过验证时 resume 等待，并只在 nominal `30` 安装；未知值或 mixed 状态仍拒绝。
+记录本次安装的 owned 补丁；Stop 关闭输入并按已验证字节恢复 owned 项，不关闭 Azahar。
+已有补丁不被重新配置或收归 owned；未知字节不能覆盖。停止的会话不自动重新接管。
+进入战斗且有焦点时自动启用输入，F4 只暂停鼠标；即时读档前仍需停止增强。
 GDB 负责停 guest、验证原字节与空 cave、写 hook、初始化关闭状态 mailbox、连接 redirect、恢复运行。
 当前 helper 高频数据走 Windows `ReadProcessMemory/WriteProcessMemory`，
 启动用 GDB 写入 fresh nonce，再验证缓存或扫描宿主映射；不能把这一映射推广到整个 guest 空间。
@@ -181,8 +190,14 @@ Linux/macOS 后端尚未实现；输入权限、Wayland/macOS 窗口访问仍需
 
 当前没有完整读档自动恢复。PID 不变、magic/version 相同，都不能证明宿主映射仍有效。
 读档前停输入，之后重新验证代码、scheduler、mailbox 和 session anchor；混合状态应重启游戏。
-helper 正常退出关闭输入 gate/mode，不等于移除全部 hook；完整恢复使用 `restore` 或重启。
+独立 CLI helper 退出只关闭 gate/mode，完整恢复使用 `restore` 或重启；
+Launcher 另外管理本次 owned hook 的恢复，两种退出语义不要混淆。
 这些边界需要实机验证，不把‘能导入接口’写成‘已跨平台运行’。
+
+Windows 玩家 EXE 使用构建时固定 payload，不依赖 Keystone 运行库：三个自写 hook 由当前 ARM 源生成，
+精确比对 canonical cave bytes；冻结加载核对 build hash 并继续运行 Capstone pool 契约。
+这不改变 guest 代码、mailbox 或 ABI。生成文件只在 `local/build/`，玩家包不含游戏镜像。
+GUI 使用现有 Tk；Linux/macOS Launcher 与原生输入后端仍未实现，不增加新的框架承诺。
 
 后续可小范围验证官方 [RPC guest 内存接口](https://github.com/azahar-emu/azahar/blob/2126.1.2/src/core/rpc/rpc_server.cpp)
 替代平台专属内存扫描；性能、时序、发行构建可用性与读档恢复尚未验收。
@@ -197,6 +212,7 @@ BPS 不能省略 runtime scheduler 和 mailbox 管理；不分发修改后的完
 实现：`tools/dev/prepare_kiu.py`，入口 `python -m tools.dev.prepare_kiu`；
 输入是用户提供的已解密 NoCrypto CCI，不是解密器。
 NCSD magic 在 `0x100`，分区表从 `0x120` 开始；分区0基址=表中 offset × `0x200`。
+表是 8 组交错的 `(offset, size)` 小端 u32，不是两个独立数组；分区0的 size 位于 `0x124`。
 NCCH 外层 section offset/size 也是 `0x200` media units。
 **ExeFS 内部 entry offset 是字节**：payload=`ExeFS base+0x200+entry offset`，不能再乘单位。
 ExeFS entry table 为 10×`0x10`，代码名通常是 `.code`（带点），也识别 `code`。

@@ -45,7 +45,6 @@ import time
 
 from capstone import CS_ARCH_ARM, CS_MODE_ARM, Cs
 from capstone.arm import ARM_OP_MEM, ARM_REG_PC
-from keystone import KS_ARCH_ARM, KS_MODE_ARM, Ks
 
 from ..gdbclient import GdbClient
 
@@ -119,6 +118,15 @@ LDR_POOL_INDEX = (1, 3)
 
 
 def assemble_hook() -> bytes:
+    if getattr(sys, "frozen", False):
+        import kiu_launcher_payloads as payloads
+        if payloads.BUILD_SHA256 != CODE_SHA256:
+            raise RuntimeError("frozen ground hook targets an unsupported build")
+        blob = payloads.GROUND_HOOK
+        _check_pool(blob)
+        return blob
+    from keystone import KS_ARCH_ARM, KS_MODE_ARM, Ks
+
     ks = Ks(KS_ARCH_ARM, KS_MODE_ARM)
     a = b = 0
     for _ in range(5):
