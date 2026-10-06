@@ -7,9 +7,17 @@
 ## 会话与注入
 
 GUI 负责选择文件、增强选项和自己的本地偏好。
-`launcher_core.py` 先只读验证完整游戏构建，再以命令行端口参数启动用户提供的 Azahar。
+`launcher_core.py` 先只读验证完整游戏构建，经首次 GUI 确认后可持久保存显示 preset，
+再以命令行端口参数启动用户提供的 Azahar。默认 SingleScreen + `-f`，
+自动比例使用主显示器物理宽高；指定比例以共享上屏伸展/留边保持比例，关闭下屏伸展。
+Custom 几何保留，双屏可选路径仍修改上屏宽度。性能/键位/存档不变。
+必须先关闭全部 Azahar，避免 Qt 以其内存设置覆盖文件。Stop/退出不写回配置快照。
 等待 game/scheduler 就绪，验证端口属于本次进程，并校验补丁字节后安装增强。
 鼠标在战斗与焦点条件满足时自动启用；GDB 安装与实时 mailbox 写入分离。
+空战由物理 render canvas + 已保存 preset 的上屏矩形映射；SingleScreen 必须匹配预设全屏尺寸，未知/裁切时关 gate，
+不以整个主窗或桌面作替代。目前只识别 Windows OpenGL OwnDC child；不宣称 Vulkan 支持。
+保留 Azahar 原生上下屏切换，不注入替代快捷键；切下屏前手动 F4 暂停鼠标，因为原生 swap 不保存 INI、当前不跟踪其内存状态。
+菜单路由是另一个 opt-in 实验开关。Stop 先等待 marker=0 且所有 guest PC 不在菜单 caves，再恢复 owned menu，随后恢复 owned 宽屏。
 停止/关闭启动器时只恢复本次安装的补丁，不关闭 Azahar，不覆盖未知字节或已有补丁。
 
 当前 Windows 程序使用 Tk GUI 和延迟加载宿主后端，不增加后台服务或跨平台 GUI 框架。
@@ -18,9 +26,9 @@ GUI 负责选择文件、增强选项和自己的本地偏好。
 
 ## 源码与冻结边界
 
-- `src/kiu/`：Launcher、CLI、只读构建验证及平台无关核心/协议。
-- `src/kiu/patches/`：当前核心增强；`experimental/`：菜单/俯仰实验，不进入玩家 Launcher。
-- `src/kiu/backends/windows/`：Windows 输入、窗口与数据通道。
+- `src/kiu/`：Launcher、CLI、只读构建验证及平台无关核心/协议；`azahar_display.py` 负责定点 INI 编辑和矩形数学。
+- `src/kiu/patches/`：当前核心增强；`experimental/`：菜单实验可选，俯仰实验不进入玩家 Launcher。
+- `src/kiu/backends/windows/`：Windows 输入、窗口、配置路径与数据通道；DLL 均在实际调用后端时才加载。
 - `tools/dev/`：提取、资产和 ARM 分析；`tools/build_launcher.py`：玩家包构建。
 
 冻结构建预先生成项目自写 ARM hook，并与 canonical 清单精确比对；运行时仍核对 build hash、

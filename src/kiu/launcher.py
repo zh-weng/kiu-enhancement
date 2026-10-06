@@ -13,12 +13,15 @@ from pathlib import Path
 from .launcher_core import LauncherOptions, LauncherSession, validate_options
 
 
-ASPECTS = {"原始 5:3": None, "16:9": 16 / 9, "21:9": 21 / 9}
-DEFAULTS = {"azahar": "", "game": "", "fps": True, "aspect": "16:9",
-            "mouse": True, "sensitivity": 0.0025}
+ASPECTS = {"自动（全屏）": "auto", "原始 5:3": None, "16:9": 16 / 9, "21:9": 21 / 9}
+DEFAULTS = {"azahar": "", "game": "", "fps": True, "aspect": "自动（全屏）",
+            "mouse": True, "sensitivity": 0.0025,
+            "sync_layout": True, "display_consent": False,
+            "single_screen": True, "menu_route": False, "display_consent_version": 2}
 MOUSE_STATUS = {"connecting": "正在连接鼠标 hook…", "anchoring": "正在定位鼠标内存（首次可能约 30 秒）…",
                 "waiting": "增强已安装，等待进入战斗…", "active": "鼠标瞄准已启用 · F4 可暂停",
                 "off": "鼠标已暂停 · F4 可重新启用", "inactive": "鼠标待机：游戏失焦或战斗未活动",
+                "viewport_missing": "空战鼠标待机：上屏区域未知或被裁切（当前仅支持 OpenGL）",
                 "complete": "鼠标输入已停止"}
 
 
@@ -42,11 +45,14 @@ def checked_preferences(data: object) -> dict:
             if not isinstance(data[key], str) or "\0" in data[key]:
                 raise ValueError("无效的文件路径")
             result[key] = data[key]
-    for key in ("fps", "mouse"):
+    for key in ("fps", "mouse", "sync_layout", "display_consent", "single_screen", "menu_route"):
         if key in data:
             if type(data[key]) is not bool:
                 raise ValueError("无效的开关设置")
             result[key] = data[key]
+    # A previous Custom-width consent does not authorize the new stretch/padding preset.
+    if data.get("display_consent_version") != 2:
+        result["display_consent"] = False
     if data.get("aspect", result["aspect"]) not in ASPECTS:
         raise ValueError("不支持的宽屏比例")
     result["aspect"] = data.get("aspect", result["aspect"])
@@ -94,8 +100,8 @@ class LauncherApp:
             warning = f"无法读取上次设置，将使用默认值：{exc}"
 
         root.title("KIU Launcher — Windows Preview")
-        root.geometry("700x510")
-        root.minsize(640, 470)
+        root.geometry("740x610")
+        root.minsize(700, 580)
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
         if sys.platform == "win32":
@@ -105,7 +111,7 @@ class LauncherApp:
         frame.columnconfigure(1, weight=1)
         ttk.Label(frame, text="Kid Icarus: Uprising", font=("Segoe UI", 20, "bold")).grid(
             row=0, column=0, columnspan=3, sticky="w")
-        ttk.Label(frame, text="官方 Azahar + USA v0 · 不修改 ROM，不覆盖模拟器配置").grid(
+        ttk.Label(frame, text="官方 Azahar + USA v0 · 不修改 ROM · 可同步上屏显示比例").grid(
             row=1, column=0, columnspan=3, sticky="w", pady=(4, 20))
         self.azahar = tk.StringVar(value=values["azahar"])
         self.game = tk.StringVar(value=values["game"])
@@ -124,6 +130,10 @@ class LauncherApp:
         self.fps = tk.BooleanVar(value=values["fps"])
         self.mouse = tk.BooleanVar(value=values["mouse"])
         self.aspect = tk.StringVar(value=values["aspect"])
+        self.sync_layout = tk.BooleanVar(value=values["sync_layout"])
+        self.single_screen = tk.BooleanVar(value=values["single_screen"])
+        self.menu_route = tk.BooleanVar(value=values["menu_route"])
+        self.display_consent = values["display_consent"]
         self.sensitivity = tk.StringVar(value=f"{values['sensitivity']:g}")
         fps = ttk.Checkbutton(options, text="真 60 FPS", variable=self.fps)
         fps.grid(row=0, column=0, sticky="w", padx=(0, 18))
@@ -136,7 +146,18 @@ class LauncherApp:
         ttk.Label(options, text="灵敏度").grid(row=1, column=2, padx=(20, 8), pady=(12, 0))
         sensitivity = ttk.Entry(options, textvariable=self.sensitivity, width=10)
         sensitivity.grid(row=1, column=3, pady=(12, 0))
-        self.editable.extend((fps, mouse, aspect, sensitivity))
+        sync_layout = ttk.Checkbutton(options, text="同步画面配置（保存 Azahar 显示 preset）",
+                                       variable=self.sync_layout)
+        sync_layout.grid(row=2, column=0, columnspan=4, sticky="w", pady=(12, 0))
+        def screen_changed():
+            if not self.single_screen.get() and self.aspect.get() == "自动（全屏）":
+                self.aspect.set("16:9")
+        single = ttk.Checkbutton(options, text="单屏全屏（默认）", variable=self.single_screen,
+                                 command=screen_changed)
+        single.grid(row=3, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        menu = ttk.Checkbutton(options, text="单屏注入：菜单移上屏（实验）", variable=self.menu_route)
+        menu.grid(row=3, column=2, columnspan=2, sticky="w", pady=(10, 0))
+        self.editable.extend((fps, mouse, aspect, sensitivity, sync_layout, single, menu))
 
         actions = ttk.Frame(frame)
         actions.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(0, 12))
@@ -152,7 +173,8 @@ class LauncherApp:
         self.log.grid(row=7, column=0, columnspan=3, sticky="nsew")
         frame.rowconfigure(7, weight=1)
         ttk.Label(frame, text="进入战斗且窗口有焦点时自动瞄准；F4 暂停。即时读档前先停止增强。\n"
-                  "宽屏比例须与 Azahar 显示布局匹配；菜单实验默认不启用。", wraplength=640).grid(
+                  "F9 复用 Azahar 上/下屏切换，切下屏前用 F4 暂停瞄准。注入不重排菜单或修复触控。\n"
+                  "改选项需停止并关闭 Azahar 后再开始；停止不撤销显示 preset。", wraplength=690).grid(
             row=8, column=0, columnspan=3, sticky="w", pady=(12, 0))
         root.protocol("WM_DELETE_WINDOW", self.close)
         if warning:
@@ -196,13 +218,25 @@ class LauncherApp:
         try:
             values = checked_preferences({"version": 1, "azahar": self.azahar.get().strip(),
                 "game": self.game.get().strip(), "fps": self.fps.get(), "mouse": self.mouse.get(),
-                "aspect": self.aspect.get(), "sensitivity": float(self.sensitivity.get())})
+                "aspect": self.aspect.get(), "sensitivity": float(self.sensitivity.get()),
+                "sync_layout": self.sync_layout.get(), "display_consent": self.display_consent,
+                "single_screen": self.single_screen.get(), "menu_route": self.menu_route.get(),
+                "display_consent_version": 2})
             if not values["azahar"] or not values["game"]:
                 raise ValueError("请先选择 Azahar 和自己的游戏文件。")
             options = LauncherOptions(azahar=Path(values["azahar"]), game=Path(values["game"]),
                 fps=values["fps"], aspect=ASPECTS[values["aspect"]], mouse=values["mouse"],
-                sensitivity=values["sensitivity"])
+                sensitivity=values["sensitivity"], sync_layout=values["sync_layout"],
+                single_screen=values["single_screen"], menu_route=values["menu_route"])
             validate_options(options)
+            if values["sync_layout"] and not values["display_consent"]:
+                if not messagebox.askokcancel("保存 Azahar 显示 preset",
+                    "单屏模式：选择原生 SingleScreen、全屏启动，按显示器尺寸设置上屏伸展/留边；下屏仍可用 F9 查看。\n"
+                    "自动比例铺满当前主显示器；指定比例不匹配时留黑边。双屏模式仍使用 Custom。\n\n"
+                    "伸展/留边和 Custom 几何是共享设置，会影响其他使用它们的游戏；停止增强后仍保留。\n"
+                    "不改性能、键位或存档。是否允许保存？", parent=self.root):
+                    return
+                self.display_consent = values["display_consent"] = True
             session = LauncherSession(options, self.events.put)
             session.start()
             self.session = session
@@ -268,9 +302,12 @@ def main(argv=None) -> int:
     if args.self_test:
         root.withdraw()
         from .patches import patch_aim_request, pin_reticle
+        from .experimental import menu_render_pass
         patch_aim_request.assemble_hook()
         pin_reticle.assemble_hook()
         pin_reticle.assemble_late_hook()
+        if len(menu_render_pass.PRE_CAVE_BYTES) != menu_render_pass.CAVE_SIZE:
+            raise RuntimeError("Invalid bundled menu hook")
         root.update_idletasks()
         root.destroy()
     else:

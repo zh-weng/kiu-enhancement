@@ -68,11 +68,43 @@ hook 先检查透视 marker，再以原始 X/Y 比例阈值区分上/下屏分�
 16:9 对应 `15/16`，21:9 对应 `5/7`；纵向投影保持不变，横向视野扩展。
 正交 UI 不走该透视分支，因此普通 HUD 不直接被这个补丁缩放。
 这不是改 ROM 纹理，也不是声明改变模拟器内部 framebuffer 分辨率。
-模拟器最终显示区域应采用同一 aspect，否则仍会产生显示层拉伸；工具不擅自改配置。
+模拟器最终显示区域应采用同一 aspect，否则仍会产生显示层拉伸。Launcher 经用户首次确认后
+可保存匹配的显示 preset，CLI 补丁本身不改配置。最终宽屏显示会横向拉伸未重排的二维 HUD：
+16:9 相对 5:3 约 6.7%，21:9 约 40%；不能把“hook 不改正交投影”说成“最终 HUD 完全不拉伸”。
 
 普通下屏不变。仅在菜单路由标记 `0x00F36820==1` 时，
 共享 extension cave `0x00C95800` 对下屏透视乘 `(4/3)/目标 aspect`，
 21:9 对应 `4/7`。它只能修正该 pass 的透视内容，不能自动重排二维菜单。
+
+### Launcher 显示 preset
+
+实现：`src/kiu/azahar_display.py` 与 `backends/windows/display_preset.py`。
+以官方 Azahar `2126.1.1` 为依据：桌面 `aspect_ratio` 不是有效的配置接口；
+[Custom 布局](https://github.com/azahar-emu/azahar/blob/2126.1.1/src/core/frontend/framebuffer_layout.cpp)
+直接使用 framebuffer raw pixel 的 x/y/width/height，不按窗口大小或 DPI 自动等比缩放。
+[配置读写](https://github.com/azahar-emu/azahar/blob/2126.1.1/src/citra_qt/configuration/config.cpp)
+只在全局文件处理 Custom 几何；本游戏的 layout/swap/upright 可单独覆写。
+因此 preset 保留既有 top x/y/height 与全部 bottom 几何，仅将 top width 设为 round(height×aspect)，
+本游戏选择 layout=6、swap=false、upright=false。5:3/16:9/21:9 在 height=480 时分别是 800/853/1120px。
+读取 `default=true` 时用实际编译默认值，不信任旁边存储的旧数值；格式不明/重复键拒绝写入。
+Custom 不等于自动铺满；小窗口会裁切，大窗口会留黑。该方案不改变 guest framebuffer 分辨率，
+不修复二维 HUD/菜单，也不改变 internal resolution 或其他性能设置。
+
+Launcher 默认改为原生 SingleScreen（layout=1）并以 `-f` 全屏启动；不是菜单 render-pass 注入。
+自动比例用主显示器物理宽高，同时设置相同透视 aspect；指定比例则以
+`screen_top_stretch=true` 和原生 `screen_top_leftright_padding/screen_top_topbottom_padding`
+计算居中留边，保持同一比例，不在 16:10 屏幕硬拉成 16:9。单屏模式保留 Custom 几何、关闭下屏 stretch，
+Azahar 原生 Swap 仍可显示原下屏，默认 F9；不改用户快捷键。留边是共享 raw pixel 设置，
+不是自适应算法；换显示器、离开全屏或画布尺寸变化时要重新校准，鼠标遇到尺寸变化保持待机。
+[官方 SingleFrameLayout](https://github.com/azahar-emu/azahar/blob/2126.1.1/src/core/frontend/framebuffer_layout.cpp)
+控制两个 screen 的 enable 位，并分别采用上下屏 stretch 设置。保存后的配置不在 Stop 时恢复。
+
+Windows 配置路径优先采用所选 Azahar 旁的 `user/config`，否则由系统查询 Roaming AppData；
+中立层不依赖 Win32，未来平台后端只需提供路径及 physical render rectangle，guest ABI 不变。
+`[Layout] render_3d` 的有效 global/title 值必须为 Off；其他立体模式会改变画区，写入前拒绝且不改该设置。
+全部 Azahar 关闭后才保存；只编辑目标字段，不重写其余配置。写失败时仅回滚仍匹配本次 replacement 的文件，
+成功后是持久 preset，Stop/退出不回滚配置。用户日后改配置不被 Launcher 的旧快照覆盖。
+共享上屏宽度会影响其他 Custom 游戏，首次 GUI 确认明确提示；旧 Launcher 偏好不自动授予这项权限。
 
 ## 4. 原生鼠标：陆战转相机，空战移准星
 
@@ -111,8 +143,16 @@ late hook 在 `0x006D2F10` 先重放 displaced store，再在 mode=2 时重申�
 这样准星射线构建前读到的最终位置才跟随宿主，而不是只在平滑前改一次。
 
 mode=2 的 x/y 是 viewport 像素，不是触摸坐标模拟。
-默认把物理桌面光标区域映射为位置；relative 模式可累计设备 counts，边界外运动会饱和丢弃。
-`--map viewport` 当前依赖 stock side-by-side 的 5/9 宽度假设，不能用于任意 custom layout。
+Launcher 同步模式将所保存的 top rectangle 加到同 PID 的真实 render canvas 原点，
+以物理桌面坐标映射到游戏 width/height。Windows 仅识别唯一 Qt OpenGL OwnDC child；
+Vulkan 的 generic Qt child 不能可靠识别，故未知、裁切或最小化时保持空战 gate 关闭，区域恢复后可自动启用。
+映射按启动时 preset 建立，不检测运行中手动改变 layout/swap/upright/3D。
+原生 F9 上下屏切换不写回 INI，因此不能靠读配置辨别当前显示哪块；切下屏前 F4 暂停瞄准，回上屏后恢复。
+其他布局/旋转/3D 或显示器改动前必须停止、关闭并重新开始。
+worker 临时设置 per-monitor thread DPI 并在 finally 恢复，光标用 GetPhysicalCursorPos；不修改 Tk/process DPI。
+未选择同步时 Launcher 也不使用整块桌面替代未知区域，空战绝对输入待机；陆战不依赖 viewport。
+CLI 默认桌面映射仍保留；relative 模式可累计设备 counts，边界外运动会饱和丢弃。
+CLI `--map viewport` 仍依赖 stock side-by-side 的 5/9 宽度假设，不能用于任意 custom layout。
 auto 依据 reticle 调用活动与记录的 controller 切换 look/point；暂停/菜单不能只靠 `P==0` 判断。
 
 ### mailbox ABI 1
@@ -155,6 +195,13 @@ post 同样 resolve target 0，关闭 marker，马上把 width 恢复 320。
 触控仍按原下屏坐标；Gear/AR 等独立上屏路径未统一。
 因此无拉伸铺满和可交互单屏菜单尚未完成，不能以标题背景一个成功画面替代全系统验收。
 
+Launcher 现在提供启动前的 opt-in「单屏注入」checkbox，默认关闭；选中才安装这个游戏 hook。
+它与 SingleScreen/fullscreen/Swap 三者独立，不把 ACTIVE_MARKER 当用户开关（该字是 pass 内部 pre/post 标记）。
+取消本次安装通过 Stop 的 owned 恢复；改变选项需关闭 Azahar 后重新启动，不在任意 pass 中途热切换。
+恢复前核对完整 thunk/cave 字节，再要求 marker=0 且所有 guest PC 不在两个 caves；
+若正处于 pass 中就先 resume、在有界时间内重试，不满足条件拒绝恢复并提示重启。
+菜单先于 owned 宽屏恢复；已有用户安装的菜单 hook 不被认领或卸载。
+
 ## 6. 俯仰实验的边界
 
 `src/kiu/experimental/patch_pitch_limit.py` 修改 `0x00746650/54` 的 ±1.39626336 rad literal，
@@ -194,7 +241,7 @@ Linux/macOS 后端尚未实现；输入权限、Wayland/macOS 窗口访问仍需
 Launcher 另外管理本次 owned hook 的恢复，两种退出语义不要混淆。
 这些边界需要实机验证，不把‘能导入接口’写成‘已跨平台运行’。
 
-Windows 玩家 EXE 使用构建时固定 payload，不依赖 Keystone 运行库：三个自写 hook 由当前 ARM 源生成，
+Windows 玩家 EXE 使用构建时固定 payload，不依赖 Keystone 运行库：五个自写 hook（含可选菜单路由）由当前 ARM 源生成，
 精确比对 canonical cave bytes；冻结加载核对 build hash 并继续运行 Capstone pool 契约。
 这不改变 guest 代码、mailbox 或 ABI。生成文件只在 `local/build/`，玩家包不含游戏镜像。
 GUI 使用现有 Tk；Linux/macOS Launcher 与原生输入后端仍未实现，不增加新的框架承诺。
@@ -205,7 +252,7 @@ GUI 使用现有 Tk；Linux/macOS Launcher 与原生输入后端仍未实现，�
 [官方加载器](https://github.com/azahar-emu/azahar/blob/2126.1.2/src/core/file_sys/ncch_container.cpp)。
 BPS 不能省略 runtime scheduler 和 mailbox 管理；不分发修改后的完整 code.bin。
 上述官方源码固定在 `2126.1.2`，不是声称该模拟器版本已通过本项目全套验收。
-调试服务不可暴露给不可信网络；控制工具不自动更改用户配置。
+调试服务不可暴露给不可信网络；除经授权的 Launcher 显示 preset 外，控制工具不更改用户配置。
 
 ## 8. CCI / ExeFS 提取与验证
 

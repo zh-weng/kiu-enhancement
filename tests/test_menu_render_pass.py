@@ -22,6 +22,7 @@ class FakeGdb:
         for cave in (patch.PRE_CAVE, patch.POST_CAVE):
             self.load(cave, bytes(patch.CAVE_SIZE))
         self.load(patch.ACTIVE_MARKER, b"\0\0\0\0")
+        self.pc = 0x00100000
 
     def load(self, address: int, data: bytes) -> None:
         self.memory.update((address + offset, value) for offset, value in enumerate(data))
@@ -31,6 +32,15 @@ class FakeGdb:
 
     def write_mem(self, address: int, data: bytes) -> None:
         self.load(address, data)
+
+    def list_threads(self):
+        return (1,)
+
+    def select_general_thread(self, thread_id):
+        pass
+
+    def read_registers(self):
+        return (0,) * 15 + (self.pc, 0)
 
 
 class MenuRenderPassTests(unittest.TestCase):
@@ -108,6 +118,20 @@ class MenuRenderPassTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "thunk"):
             patch.revert(gdb)
         self.assertEqual(gdb.memory, before)
+
+    def test_restore_refuses_an_active_pass_or_executing_cave_without_writes(self):
+        for marker, pc in ((1, 0x00100000), (0, patch.PRE_CAVE),
+                           (0, patch.POST_CAVE + patch.CAVE_SIZE - 4)):
+            with self.subTest(marker=marker, pc=hex(pc)):
+                gdb = FakeGdb()
+                patch.apply(gdb)
+                gdb.load(patch.ACTIVE_MARKER, marker.to_bytes(4, "little"))
+                gdb.pc = pc
+                before = dict(gdb.memory)
+                self.assertFalse(patch.can_revert(gdb))
+                with self.assertRaisesRegex(RuntimeError, "busy"):
+                    patch.revert(gdb)
+                self.assertEqual(gdb.memory, before)
 
 
 if __name__ == "__main__":

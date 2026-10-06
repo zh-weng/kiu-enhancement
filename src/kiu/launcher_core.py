@@ -2,7 +2,8 @@
 
 The GUI owns preferences and presentation.  This module owns only the process
 it launches, checked injection, and restoration of patches installed by that
-session.  It never closes Azahar or changes emulator configuration.
+session. A caller may explicitly request a persistent display preset; no
+performance, input, or storage settings are changed. It never closes Azahar.
 """
 from __future__ import annotations
 
@@ -31,18 +32,25 @@ class LauncherOptions:
     azahar: Path
     game: Path
     fps: bool = True
-    aspect: float | None = 16 / 9
+    aspect: float | str | None = 16 / 9
     mouse: bool = True
     sensitivity: float = 0.0025
     port: int = 24689
+    sync_layout: bool = False
+    single_screen: bool = False
+    menu_route: bool = False
 
 
 def validate_options(options: LauncherOptions) -> None:
     """Validate the current backend's options without importing Windows APIs."""
     if sys.platform != "win32":
         raise RuntimeError("The Launcher backend currently requires Windows; use the CLI on other platforms")
-    if options.aspect is not None and (
-        not math.isfinite(options.aspect)
+    if options.aspect == "auto":
+        if not options.single_screen:
+            raise ValueError("Automatic aspect requires single-screen fullscreen mode")
+    elif options.aspect is not None and (
+        type(options.aspect) not in (int, float)
+        or not math.isfinite(options.aspect)
         or not any(math.isclose(options.aspect, value, rel_tol=0, abs_tol=1e-6)
                    for value in (5 / 3, 16 / 9, 21 / 9))
     ):
@@ -51,6 +59,12 @@ def validate_options(options: LauncherOptions) -> None:
         raise ValueError("Mouse sensitivity must be a finite positive number")
     if type(options.port) is not int or not 1 <= options.port <= 65535:
         raise ValueError("GDB port must be an integer between 1 and 65535")
+    if type(options.sync_layout) is not bool:
+        raise ValueError("Display preset selection must be a boolean")
+    if any(type(value) is not bool for value in (options.single_screen, options.menu_route)):
+        raise ValueError("Single-screen and menu injection selections must be boolean")
+    if options.single_screen and not options.sync_layout:
+        raise ValueError("Single-screen fullscreen requires the display preset option")
     azahar = Path(options.azahar)
     if azahar.name.lower() != "azahar.exe" or not azahar.is_file():
         raise ValueError("Select the stock Azahar executable named azahar.exe")
@@ -85,6 +99,21 @@ def _require_free_port(port: int) -> None:
 def _run_mouse(argv, **options):
     from .backends.windows.native_fps_aim import main
     return main(argv, **options)
+
+
+def _save_display(options):
+    from .backends.windows.display_preset import save_display
+    return save_display(Path(options.azahar), options.aspect, single_screen=options.single_screen)
+
+
+def _menu_module():
+    from .experimental import menu_render_pass
+    return menu_render_pass
+
+
+def _top_rect_provider(layout):
+    from .backends.windows.display_preset import top_rect_provider
+    return top_rect_provider(layout)
 
 
 @contextmanager
@@ -144,6 +173,7 @@ class LauncherSession:
         self._lock = threading.Lock()
         self._loaded = {}
         self._owned: list[str] = []
+        self._aspect = options.aspect
 
     @property
     def alive(self) -> bool:
@@ -199,10 +229,22 @@ class LauncherSession:
             raise RuntimeError("fps: unknown/mixed code bytes; refusing cold-start retry")
         return stock
 
+    def _check_display_projection(self, states) -> None:
+        if not self.options.sync_layout or states["wide"]["state"] != "installed":
+            return
+        actual = states["wide"].get("aspect")
+        if (self._aspect is None or type(actual) not in (int, float)
+                or not math.isfinite(actual)
+                or not math.isclose(actual, self._aspect, rel_tol=0, abs_tol=1e-5)):
+            raise RuntimeError("Existing widescreen patch does not match the selected display preset; restart without that patch")
+
     def _install(self) -> None:
         selected = (["fps"] if self.options.fps else []) \
             + (["wide"] if self.options.aspect is not None else []) \
             + (["aim", "pin"] if self.options.mouse else [])
+        if self.options.menu_route:
+            selected.append("menu")
+        checked = selected + (["wide"] if self.options.sync_layout and "wide" not in selected else [])
         deadline = time.monotonic() + STARTUP_TIMEOUT
         self._status("等待 Azahar 和游戏初始化")
         while time.monotonic() < deadline:
@@ -226,7 +268,8 @@ class LauncherSession:
                         stock = self._check_cold_fps_code(gdb)
                         if nominal == 60 and not stock:
                             raise RuntimeError("fps: installed patch with constructor nominal 60 is not a cold stock state")
-                        states = checked_states(gdb, [name for name in selected if name != "fps"], self._loaded)
+                        states = checked_states(gdb, [name for name in checked if name != "fps"], self._loaded)
+                        self._check_display_projection(states)
                         self._check_mouse_abi(gdb, [name for name in states
                                                     if states[name]["state"] == "installed"])
                         # The context manager resumes all threads before retry:
@@ -235,7 +278,8 @@ class LauncherSession:
                         # transient; unknown values still fail below.
                     else:
                         fps._scheduler(gdb)  # Validate the expected nominal 30 Hz field.
-                        states = checked_states(gdb, selected, self._loaded)
+                        states = checked_states(gdb, checked, self._loaded)
+                        self._check_display_projection(states)
                         self._check_mouse_abi(gdb, [name for name in selected
                                                     if states[name]["state"] == "installed"])
                         self._check_cancel()
@@ -247,7 +291,7 @@ class LauncherSession:
                             self._owned.append(name)
                             module = self._loaded[name]
                             if name == "wide":
-                                module.apply(gdb, self.options.aspect)
+                                module.apply(gdb, self._aspect)
                             elif name in ("aim", "pin"):
                                 module.apply(gdb, resume=False)
                             else:
@@ -278,20 +322,31 @@ class LauncherSession:
         if not self._require_owner():
             raise RuntimeError("Cannot verify GDB ownership; restoration refused")
         self._status("正在恢复本次 Launcher 安装的增强")
-        with guest_session(self.options.port, timeout=GDB_TIMEOUT) as gdb:
-            if not self._require_owner():
-                raise RuntimeError("Cannot verify connected GDB ownership; restoration refused")
-            states = checked_states(gdb, self._owned, self._loaded)
-            self._check_mouse_abi(gdb, [name for name in self._owned
-                                        if states[name]["state"] == "installed"])
-            for name in reversed(self._owned):
-                if states[name]["state"] == "installed":
-                    module = self._loaded[name]
-                    if name in ("aim", "pin"):
-                        module.revert(gdb, resume=False)
-                    else:
-                        module.revert(gdb)
-        self._owned.clear()
+        deadline = time.monotonic() + 2.0
+        while True:
+            busy = False
+            with guest_session(self.options.port, timeout=GDB_TIMEOUT) as gdb:
+                if not self._require_owner():
+                    raise RuntimeError("Cannot verify connected GDB ownership; restoration refused")
+                states = checked_states(gdb, self._owned, self._loaded)
+                self._check_mouse_abi(gdb, [name for name in self._owned
+                                          if states[name]["state"] == "installed"])
+                if "menu" in states and states["menu"]["state"] == "installed":
+                    busy = not self._loaded["menu"].can_revert(gdb)
+                if not busy:
+                    for name in reversed(self._owned):
+                        if states[name]["state"] == "installed":
+                            module = self._loaded[name]
+                            if name in ("aim", "pin"):
+                                module.revert(gdb, resume=False)
+                            else:
+                                module.revert(gdb)
+                    self._owned.clear()
+                    return
+            # Resume a redirected pass to its post/restore boundary before retry.
+            if time.monotonic() >= deadline:
+                raise RuntimeError("Menu render pass did not reach a safe restore boundary; restart the game")
+            time.sleep(POLL_INTERVAL)
 
     def run(self) -> None:
         """Synchronous entry used by the worker and deterministic tests."""
@@ -300,31 +355,45 @@ class LauncherSession:
                 raise RuntimeError("Create a new LauncherSession for each launch")
             self._used = self._running = True
         monitor = None
+        layout = None
         try:
             validate_options(self.options)
             self._check_cancel()
             verify_game(Path(self.options.game), cancelled=self._stop_event.is_set, progress=self._status)
             self._check_cancel()
             _require_free_port(self.options.port)
+            if self.options.sync_layout:
+                self._status("正在保存单屏全屏 preset" if self.options.single_screen else "正在保存双屏比例 preset")
+                layout = _save_display(self.options)
+                if self.options.aspect == "auto":
+                    self._aspect = layout.aspect
+                self._check_cancel()
             azahar = Path(self.options.azahar).resolve()
             game = Path(self.options.game).resolve()
             self._status("正在启动 Azahar")
             with _external_program_dll_path():
                 self.process = subprocess.Popen(
                     # Some official Windows builds reject the long spelling.
-                    [str(azahar), "-g", str(self.options.port), str(game)],
+                    [str(azahar), "-g", str(self.options.port),
+                     *(["-f"] if self.options.single_screen else []), str(game)],
                     cwd=azahar.parent, shell=False,
                 )
             self._loaded = _patch_modules()
+            if self.options.menu_route:
+                self._loaded["menu"] = _menu_module()
             self._install()
             self._check_cancel()
             if self.options.mouse:
                 monitor = threading.Thread(target=self._monitor, name="kiu-launch-monitor", daemon=False)
                 monitor.start()
+                # Never map an unverified Launcher layout to the entire desktop.
+                # CLI callers retain their explicitly selected mapping behavior.
+                rectangle = _top_rect_provider(layout) if layout is not None else lambda _pid: None
                 _run_mouse(
                     ["--port", str(self.options.port), "--sensitivity", str(self.options.sensitivity)],
                     stop_event=self._stop_event, status_callback=self._status,
                     auto_activate=True, wait_for_battle=True, expected_pid=self.process.pid,
+                    rect_provider=rectangle,
                 )
             else:
                 self._status("增强已启用；关闭 Azahar 或点击停止可结束此会话")

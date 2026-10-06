@@ -39,7 +39,7 @@ python tools/build_launcher.py
 
 输出 `local/releases/kiu-launcher-windows-preview.zip`。
 spec、缓存和 generated hook payload 在 `local/build/launcher/`，不提交。
-构建从 ARM 源生成三个固定 hook，与 canonical 清单比对；冻结运行不依赖 Keystone。
+构建从 ARM 源生成五个固定 hook（含可选菜单路由），与 canonical 清单比对；冻结运行不依赖 Keystone。
 脚本检查 Tcl/Tk、Capstone、许可与发行边界，再以独立 QA 设置运行 EXE 自检后打包。
 不包含游戏、模拟器、个人设置或研究目录，不能把打包成功称为战斗验收完成。
 CI 的手动 `build_windows_launcher` 开关可执行同一流程，不自动创建 Release。

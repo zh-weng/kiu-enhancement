@@ -24,7 +24,7 @@
 ## Current priorities
 
 60 FPS and battle widescreen are accepted. Native mouse is a preview; timing races and savestate recovery remain.
-Menu routing is experimental, not finished single-screen UI. See `STATUS.md` for current state.
+Menu routing is experimental, not finished single-screen UI. The user requested an opt-in Launcher checkbox; keep it off by default. See `STATUS.md` for current state.
 Do not resurrect old mouse paths or F9/framebuffer-copy routing as the public entry point.
 Maintain current technical conclusions in `docs/KNOWLEDGE.md`; link operational/architecture documentation instead of duplicating superseded reports or personal work logs.
 

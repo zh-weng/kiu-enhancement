@@ -11,6 +11,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from kiu.patches import patch_aim_request as ground, pin_reticle as reticle
+from kiu.experimental import menu_render_pass as menu
 
 
 class FrozenPayloadTests(unittest.TestCase):
@@ -20,6 +21,8 @@ class FrozenPayloadTests(unittest.TestCase):
             "GROUND_HOOK": ground.assemble_hook(),
             "RETICLE_HOOK": reticle.assemble_hook(),
             "RETICLE_LATE_HOOK": reticle.assemble_late_hook(),
+            "MENU_PRE_HOOK": menu.PRE_CAVE_BYTES,
+            "MENU_POST_HOOK": menu.POST_CAVE_BYTES,
         }
 
     def payload_module(self, **overrides):
@@ -33,6 +36,10 @@ class FrozenPayloadTests(unittest.TestCase):
             self.assertEqual(ground.assemble_hook(), self.reference["GROUND_HOOK"])
             self.assertEqual(reticle.assemble_hook(), self.reference["RETICLE_HOOK"])
             self.assertEqual(reticle.assemble_late_hook(), self.reference["RETICLE_LATE_HOOK"])
+            for restore, cave, site, name in ((False, menu.PRE_CAVE, menu.PRE_SITE, "MENU_PRE_HOOK"),
+                                               (True, menu.POST_CAVE, menu.POST_SITE, "MENU_POST_HOOK")):
+                self.assertEqual(menu.build_cave(cave, restore_width=restore, return_address=site + 12),
+                                 self.reference[name])
 
     def test_wrong_build_hash_is_rejected_by_all_three_builders(self):
         with mock.patch.object(sys, "frozen", True, create=True), \
@@ -66,7 +73,9 @@ p.BUILD_SHA256=values.pop('BUILD_SHA256')
 for name,hexbytes in values.items(): setattr(p,name,bytes.fromhex(hexbytes))
 sys.modules[p.__name__]=p
 from kiu.patches import patch_aim_request,pin_reticle
+from kiu.experimental import menu_render_pass
 patch_aim_request.assemble_hook(); pin_reticle.assemble_hook(); pin_reticle.assemble_late_hook()
+assert len(menu_render_pass.PRE_CAVE_BYTES) == menu_render_pass.CAVE_SIZE
 assert 'keystone' not in sys.modules
 """
         values = {name: blob.hex() for name, blob in self.reference.items()}

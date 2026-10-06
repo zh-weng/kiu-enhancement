@@ -39,10 +39,11 @@ from ...patches import patch_aim_request as aim
 from ...patches import pin_reticle as pin
 
 user32 = ctypes.windll.user32
-try:                       # physical pixels, so the map is not DPI-scaled
-    ctypes.windll.shcore.SetProcessDpiAwareness(2)
-except BaseException:
-    pass
+user32.GetPhysicalCursorPos.argtypes = (ctypes.POINTER(ctypes.wintypes.POINT),)
+user32.GetPhysicalCursorPos.restype = ctypes.wintypes.BOOL
+
+Rect = tuple[float, float, float, float]
+RectProvider = Callable[[int], Rect | None]
 
 SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN = 76, 77
 SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 78, 79
@@ -117,7 +118,8 @@ def virtual_screen() -> tuple[int, int, int, int]:
 
 def cursor_position() -> tuple[int, int]:
     point = ctypes.wintypes.POINT()
-    user32.GetCursorPos(ctypes.byref(point))
+    if not user32.GetPhysicalCursorPos(ctypes.byref(point)):
+        raise RuntimeError("Cannot read the physical cursor position")
     return point.x, point.y
 
 
@@ -163,7 +165,24 @@ class _Stopped(Exception):
 def main(argv: list[str] | None = None, *, stop_event: threading.Event | None = None,
          status_callback: Callable[[str], None] | None = None,
          auto_activate: bool = False, wait_for_battle: bool = False,
-         expected_pid: int | None = None) -> int:
+         expected_pid: int | None = None, rect_provider: RectProvider | None = None) -> int:
+    """Run the worker with physical coordinates, restoring its thread DPI.
+
+    rect_provider receives the anchored PID and returns the actual top viewport
+    in physical desktop pixels. Unknown/invalid rectangles disable absolute
+    point input, never fall back to the desktop. Ground and relative input do
+    not depend on this optional host-only interface; the guest ABI is unchanged.
+    """
+    with window.per_monitor_dpi():
+        return _run(argv, stop_event=stop_event, status_callback=status_callback,
+                    auto_activate=auto_activate, wait_for_battle=wait_for_battle,
+                    expected_pid=expected_pid, rect_provider=rect_provider)
+
+
+def _run(argv: list[str] | None = None, *, stop_event: threading.Event | None = None,
+         status_callback: Callable[[str], None] | None = None,
+         auto_activate: bool = False, wait_for_battle: bool = False,
+         expected_pid: int | None = None, rect_provider: RectProvider | None = None) -> int:
     """Run the CLI or a cancellable GUI worker without changing the guest ABI.
 
     GUI callers can wait in menus and activate on a focused, live battle. F4
@@ -207,6 +226,8 @@ def main(argv: list[str] | None = None, *, stop_event: threading.Event | None = 
     args = parser.parse_args(argv)
     if expected_pid is not None and (type(expected_pid) is not int or expected_pid <= 0):
         raise ValueError("expected_pid must be a positive integer")
+    if rect_provider is not None and not callable(rect_provider):
+        raise ValueError("rect_provider must be callable")
 
     last_status = None
 
@@ -436,9 +457,23 @@ def main(argv: list[str] | None = None, *, stop_event: threading.Event | None = 
                     report_session()
                     live["on"] = False
 
-        rect = (0.0, 0.0, 1.0, 1.0)
-        if args.mapping != "relative" and valid_dimensions((width, height)):
-            rect = mapped_rect(args.mapping, args.map_span, height / width, pid=memory.pid)
+        def point_rect() -> Rect | None:
+            if rect_provider is None:
+                return mapped_rect(args.mapping, args.map_span, height / width, pid=memory.pid)
+            value = rect_provider(memory.pid)
+            try:
+                if value is None or len(value) != 4:
+                    return None
+                result = tuple(float(part) for part in value)
+                if not all(math.isfinite(part) for part in result) or result[2] <= 0 or result[3] <= 0:
+                    return None
+            except (TypeError, ValueError, OverflowError):
+                return None
+            return result
+
+        rect = None
+        if live["mode"] == "point" and args.mapping != "relative" and valid_dimensions((width, height)):
+            rect = point_rect()
 
         check_stop()
         try:
@@ -462,6 +497,8 @@ def main(argv: list[str] | None = None, *, stop_event: threading.Event | None = 
             print(f"[aim] POINT (air), integrating deltas: "
                   f"{args.point_sensitivity:g} screen px per count, "
                   f"reticle bounded to {width:g}x{height:g}")
+        elif rect is None:
+            print("[aim] waiting for a known top-screen viewport; input gates remain off")
         else:
             rx, ry, rw, rh = rect
             print(f"[aim] POINT (air), absolute: desktop rect "
@@ -497,9 +534,8 @@ def main(argv: list[str] | None = None, *, stop_event: threading.Event | None = 
                     clear_inputs()
                     width, height = size
                     centre = (width / 2.0, height / 2.0)
-                    if args.mapping != "relative":
-                        rect = mapped_rect(args.mapping, args.map_span,
-                                           height / width, pid=memory.pid)
+                    if rect_provider is None and next_mode == "point" and args.mapping != "relative":
+                        rect = point_rect()
                     with lock:
                         live["mode"] = next_mode
                         live["on"] = False
@@ -508,11 +544,16 @@ def main(argv: list[str] | None = None, *, stop_event: threading.Event | None = 
                     was_on = False
                     print(f"[aim] battle type changed -> "
                           f"{'LOOK (ground)' if sensed == 'look' else 'POINT (air)'}")
+                if rect_provider is not None and live["mode"] == "point" and args.mapping != "relative":
+                    rect = point_rect() if valid_dimensions(size) else None
+                elif active and live["mode"] == "point" and args.mapping != "relative" and rect is None:
+                    rect = point_rect()
                 with lock:
                     live["battle_active"] = active
                 sensed_calls = calls
 
-            if live["battle_active"] and live["mode"] == "point" and args.mapping != "relative":
+            if (live["battle_active"] and live["mode"] == "point"
+                    and args.mapping != "relative" and rect is not None):
                 cx, cy = cursor_position()
                 with lock:
                     live["px"], live["py"] = map_point(rect, width, height, (cx, cy))
@@ -524,6 +565,11 @@ def main(argv: list[str] | None = None, *, stop_event: threading.Event | None = 
                     break
                 wanted = live["wanted"]
                 active = live["battle_active"]
+                viewport_missing = (rect_provider is not None and active
+                                    and live["mode"] == "point"
+                                    and args.mapping != "relative" and rect is None)
+                if live["mode"] == "point" and args.mapping != "relative" and rect is None:
+                    active = False
                 dx, dy = live["dx"], live["dy"]
                 live["dx"] = live["dy"] = 0.0
                 px, py = live["px"], live["py"]
@@ -551,8 +597,10 @@ def main(argv: list[str] | None = None, *, stop_event: threading.Event | None = 
                             live["px"], live["py"] = centre
                             px, py = centre
                     if live["mode"] == "point" and args.mapping != "relative":
-                        rect = mapped_rect(args.mapping, args.map_span,
-                                           height / width, pid=memory.pid)
+                        # Providers refresh at sensing cadence, so a None must
+                        # not reopen the gate here or fall back to the desktop.
+                        if rect_provider is None:
+                            rect = point_rect()
                         px, py = map_point(rect, width, height, cursor_position())
                 else:
                     report_session()
@@ -572,6 +620,7 @@ def main(argv: list[str] | None = None, *, stop_event: threading.Event | None = 
                 was_on = on
 
             notify("active" if on else "off" if not wanted else
+                   "viewport_missing" if viewport_missing else
                    "inactive" if saw_battle else "waiting")
             if on:
                 validate_mailboxes(memory)

@@ -33,7 +33,7 @@ class LauncherBuildTests(unittest.TestCase):
         self.assertIn("--windowed", command)
         self.assertNotIn("--onefile", command)
         self.assertIn("kiu_launcher_payloads", command)
-        for name in ("keystone", "kiu.experimental", "kiu.export_cheats", "tools"):
+        for name in ("keystone", "kiu.experimental.patch_pitch_limit", "kiu.export_cheats", "tools"):
             self.assertIn(name, command)
         self.assertNotIn("kiu.cli", command)
         for flag in ("--workpath", "--specpath", "--distpath"):
@@ -57,6 +57,10 @@ class LauncherBuildTests(unittest.TestCase):
         for name, address in (("GROUND_HOOK", 0x00C95100), ("RETICLE_HOOK", 0x00C95F00),
                               ("RETICLE_LATE_HOOK", 0x00C95200)):
             self.assertEqual(namespace[name].hex(), sites[address])
+        menu_sites = {int(site["address"], 16): site["replacement_hex"]
+                      for site in canonical["features"]["menu_bottom_to_top"]["sites"]}
+        self.assertEqual(namespace["MENU_PRE_HOOK"].hex(), menu_sites[0x00C95640])
+        self.assertEqual(namespace["MENU_POST_HOOK"].hex(), menu_sites[0x00C95700])
 
     def test_stale_canonical_payload_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

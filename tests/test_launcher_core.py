@@ -133,6 +133,139 @@ class LaunchTests(unittest.TestCase):
         names = [item[1] for item in self.log[:first] if item[0] == "status"]
         self.assertEqual(names, ["fps", "wide", "aim", "pin"])
 
+    def test_display_preset_is_opt_in_for_programmatic_callers(self):
+        save = self.patch(core, "_save_display")
+        provider = self.patch(core, "_top_rect_provider")
+        session = self.session()
+        session.run()
+        save.assert_not_called()
+        provider.assert_not_called()
+        self.assertIsNone(self.driver.call_args.kwargs["rect_provider"](self.process.pid))
+
+    def test_display_saved_after_verification_before_launch_and_bound_to_mouse(self):
+        layout, rectangle = object(), mock.Mock()
+        order = []
+        self.verify.side_effect = lambda *a, **k: order.append("verify")
+        self.free_port.side_effect = lambda *a: order.append("port")
+
+        def save(options):
+            self.assertFalse(self.popen.called)
+            order.append("display")
+            return layout
+
+        save_mock = self.patch(core, "_save_display", side_effect=save)
+        provider = self.patch(core, "_top_rect_provider", return_value=rectangle)
+        session = self.session(sync_layout=True)
+        session.run()
+        self.assertIsNone(session.error)
+        self.assertEqual(order, ["verify", "port", "display"])
+        save_mock.assert_called_once_with(session.options)
+        provider.assert_called_once_with(layout)
+        self.assertIs(self.driver.call_args.kwargs["rect_provider"], rectangle)
+        self.assertEqual(self.driver.call_args.kwargs["expected_pid"], self.process.pid)
+        # Stop/exit never writes the user's saved display preset a second time.
+        self.assertEqual(save_mock.call_count, 1)
+
+    def test_display_not_written_when_verification_or_port_check_fails(self):
+        save = self.patch(core, "_save_display")
+        for failing in (self.verify, self.free_port):
+            with self.subTest(failing=failing):
+                failing.side_effect = RuntimeError("preflight failed")
+                session = self.session(sync_layout=True)
+                session.run()
+                self.assertIn("preflight failed", session.error)
+                failing.side_effect = None
+        save.assert_not_called()
+        self.popen.assert_not_called()
+
+    def test_display_save_failure_does_not_launch_or_patch(self):
+        self.patch(core, "_save_display", side_effect=RuntimeError("close all Azahar instances"))
+        session = self.session(sync_layout=True)
+        session.run()
+        self.assertIn("close all", session.error)
+        self.popen.assert_not_called()
+        self.assertEqual(self.connections, 0)
+
+    def test_single_screen_launches_fullscreen_and_auto_uses_display_ratio(self):
+        self.patch(core, "_save_display", return_value=SimpleNamespace(aspect=16 / 10))
+        self.patch(core, "_top_rect_provider", return_value=mock.Mock())
+        session = self.session(single_screen=True, sync_layout=True, aspect="auto")
+        session.run()
+        self.assertIsNone(session.error)
+        self.assertIn("-f", self.popen.call_args.args[0])
+        self.assertEqual(next(item[2] for item in self.log if item[:2] == ("apply", "wide")), (16 / 10,))
+
+    def test_menu_is_opt_in_and_restored_before_wide(self):
+        menu = Patch("menu", self.log)
+        menu.can_revert = mock.Mock(return_value=True)
+        self.patch(core, "_menu_module", return_value=menu)
+        session = self.session(menu_route=True)
+        session.run()
+        self.assertIsNone(session.error)
+        self.assertEqual([item[1] for item in self.log if item[0] == "apply"],
+                         ["fps", "wide", "aim", "pin", "menu"])
+        self.assertEqual([item[1] for item in self.log if item[0] == "revert"],
+                         ["menu", "pin", "aim", "wide", "fps"])
+
+    def test_existing_menu_is_not_owned_or_restored(self):
+        menu = Patch("menu", self.log, state="installed")
+        menu.can_revert = mock.Mock()
+        self.patch(core, "_menu_module", return_value=menu)
+        session = self.session(menu_route=True)
+        session.run()
+        self.assertIsNone(session.error)
+        menu.can_revert.assert_not_called()
+        self.assertFalse(any(item[:2] in (("apply", "menu"), ("revert", "menu")) for item in self.log))
+
+    def test_busy_menu_restore_resumes_then_retries_before_any_revert(self):
+        menu = Patch("menu", self.log)
+        menu.can_revert = mock.Mock(side_effect=[False, True])
+        self.patch(core, "_menu_module", return_value=menu)
+        session = self.session(menu_route=True)
+        session.run()
+        self.assertIsNone(session.error)
+        self.assertEqual(menu.can_revert.call_count, 2)
+        first_restore = next(i for i, item in enumerate(self.log) if item[0] == "revert")
+        self.assertLess(self.log.index(("resume", 2)), first_restore)
+
+    def test_unknown_menu_prevents_all_guest_installation(self):
+        self.patch(core, "_menu_module", return_value=Patch("menu", self.log, state="mixed"))
+        session = self.session(menu_route=True)
+        session.run()
+        self.assertIn("unknown/mixed", session.error)
+        self.assertFalse(any(item[0] in ("apply", "revert", "gate", "mode") for item in self.log))
+
+    def test_cancellation_after_persistent_preset_does_not_launch(self):
+        session = self.session(sync_layout=True)
+        save = self.patch(core, "_save_display", side_effect=lambda *a: session.stop())
+        session.run()
+        self.assertIsNone(session.error)
+        save.assert_called_once()
+        self.popen.assert_not_called()
+
+    def test_existing_projection_mismatch_blocks_guest_writes(self):
+        self.patch(core, "_save_display", return_value=object())
+        original_status = self.modules["wide"].status
+        for aspect, existing in ((16 / 9, 21 / 9), (None, 16 / 9), (16 / 9, None)):
+            with self.subTest(aspect=aspect, existing=existing):
+                self.modules["wide"].state = "installed"
+                self.modules["wide"].status = lambda gdb: {**original_status(gdb), "aspect": existing}
+                session = self.session(sync_layout=True, aspect=aspect)
+                session.run()
+                self.assertIn("does not match", session.error)
+        self.assertFalse(any(item[0] in ("apply", "gate", "mode", "revert") for item in self.log))
+
+    def test_matching_existing_projection_is_reused_without_claiming_ownership(self):
+        self.patch(core, "_save_display", return_value=object())
+        self.patch(core, "_top_rect_provider", return_value=mock.Mock())
+        self.modules["wide"].state = "installed"
+        original = self.modules["wide"].status
+        self.modules["wide"].status = lambda gdb: {**original(gdb), "aspect": 16 / 9}
+        session = self.session(sync_layout=True)
+        session.run()
+        self.assertIsNone(session.error)
+        self.assertFalse(any(item[:2] in (("apply", "wide"), ("revert", "wide")) for item in self.log))
+
     def test_restores_owned_hooks_after_driver_cleanup_in_reverse_order(self):
         session = self.session()
         session.run()
@@ -432,8 +565,11 @@ class LaunchTests(unittest.TestCase):
 
     def test_bad_aspect_sensitivity_port_or_executable_are_refused(self):
         for changes in ({"aspect": float("nan")}, {"aspect": 2.0},
+                        {"aspect": "invalid"}, {"aspect": True},
                         {"sensitivity": 0}, {"sensitivity": float("inf")},
-                        {"port": 0}, {"port": True}, {"azahar": self.game}):
+                        {"port": 0}, {"port": True}, {"azahar": self.game}, {"sync_layout": "yes"},
+                        {"single_screen": 1}, {"single_screen": True}, {"aspect": "auto"},
+                        {"menu_route": "yes"}):
             with self.subTest(changes=changes):
                 with self.assertRaises(ValueError):
                     core.validate_options(self.session(**changes).options)

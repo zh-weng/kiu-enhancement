@@ -35,6 +35,7 @@ PACKAGE_FILES = (
     "src/kiu/aim_core.py", "src/kiu/aim_protocol.py", "src/kiu/export_cheats.py",
     "src/kiu/gdbclient.py",
     "src/kiu/launcher.py", "src/kiu/launcher_core.py", "src/kiu/game_build.py",
+    "src/kiu/azahar_display.py", "src/kiu/backends/windows/display_preset.py",
     "src/kiu/patches/__init__.py", "src/kiu/patches/patch_60fps.py",
     "src/kiu/patches/patch_widescreen.py", "src/kiu/patches/patch_aim_request.py",
     "src/kiu/patches/pin_reticle.py",

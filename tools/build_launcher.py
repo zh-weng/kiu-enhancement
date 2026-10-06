@@ -29,7 +29,7 @@ BUILD_TOOLS = ROOT / "local/build-tools"
 PLAYER_TEXT = ("README.md", "STATUS.md", "LICENSE", *source_release.DOC_FILES,
                *source_release.MANIFEST_FILES)
 FORBIDDEN_SUFFIXES = {".cci", ".3ds", ".cia", ".cxi", ".sav", ".bin", ".3gx"}
-EXCLUDED_MODULES = ("keystone", "kiu.experimental", "kiu.export_cheats", "tools")
+EXCLUDED_MODULES = ("keystone", "kiu.experimental.patch_pitch_limit", "kiu.export_cheats", "tools")
 
 
 class LauncherBuildError(ValueError):
@@ -40,15 +40,19 @@ def hook_payload_source(root: Path = ROOT) -> bytes:
     """Compile only project-authored hooks, checking canonical exact bytes."""
     sys.path.insert(0, str(root / "src"))
     from kiu.patches import patch_aim_request as aim, pin_reticle as pin
+    from kiu.experimental import menu_render_pass as menu
     canonical = json.loads((root / "manifests/gateway_cheats.json").read_text(encoding="utf-8"))
     if canonical["code_sha256"] != aim.CODE_SHA256 or pin.CODE_SHA256 != aim.CODE_SHA256:
         raise LauncherBuildError("canonical hook build hash does not match")
     sites = canonical["features"]["native_mouse_guest_hooks"]["sites"]
+    sites += canonical["features"]["menu_bottom_to_top"]["sites"]
     expected = {int(site["address"], 16): site for site in sites}
     payloads = (
         ("GROUND_HOOK", aim.HOOK_VA, aim.assemble_hook()),
         ("RETICLE_HOOK", pin.HOOK_VA, pin.assemble_hook()),
         ("RETICLE_LATE_HOOK", pin.LATE_HOOK_VA, pin.assemble_late_hook()),
+        ("MENU_PRE_HOOK", menu.PRE_CAVE, menu.PRE_CAVE_BYTES),
+        ("MENU_POST_HOOK", menu.POST_CAVE, menu.POST_CAVE_BYTES),
     )
     lines = ['"""Build-generated project hook instructions; no game image data."""',
              f"BUILD_SHA256 = {aim.CODE_SHA256!r}"]

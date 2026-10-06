@@ -4,6 +4,7 @@ local/
 *.3ds
 *.cxi
 *.cia
+*.3gx
 code.bin
 exefs_*.bin
 *.nds

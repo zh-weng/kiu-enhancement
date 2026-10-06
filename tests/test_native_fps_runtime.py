@@ -1,7 +1,7 @@
 """Distribution and resource cleanup tests; no emulator or input is touched."""
 from __future__ import annotations
 
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 import json
 import struct
 import subprocess
@@ -115,6 +115,12 @@ class SessionMemory:
 
 @unittest.skipUnless(sys.platform == "win32", "Windows process-memory/input adapter")
 class NativeRuntimeTests(unittest.TestCase):
+    def setUp(self):
+        # Unit tests must not change the real test/UI thread's awareness.
+        self.dpi = patch.object(driver.window, "per_monitor_dpi", side_effect=lambda: nullcontext())
+        self.dpi.start()
+        self.addCleanup(self.dpi.stop)
+
     def test_process_lookup_console_helpers_do_not_show_a_window(self) -> None:
         with patch("subprocess.run") as run:
             run.return_value.stdout = '"azahar.exe","123","Console","1","1 K"\n'
@@ -203,6 +209,38 @@ class NativeRuntimeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "positive integer"):
                     driver.main([], expected_pid=value)
             connect.assert_not_called()
+
+    def test_invalid_rect_provider_is_refused_without_connecting(self) -> None:
+        with patch.object(driver, "GdbClient") as connect:
+            with self.assertRaisesRegex(ValueError, "rect_provider must be callable"):
+                driver.main([], rect_provider=False)
+        connect.assert_not_called()
+
+    def test_worker_restores_dpi_context_after_early_failure(self) -> None:
+        context = MagicMock()
+        with patch.object(driver.window, "per_monitor_dpi", return_value=context), patch.object(
+            driver, "_run", side_effect=RuntimeError("failed before GDB")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "failed before GDB"):
+                driver.main([])
+        context.__enter__.assert_called_once()
+        context.__exit__.assert_called_once()
+
+    def test_cursor_query_uses_physical_coordinates_including_negative_origin(self) -> None:
+        def physical(pointer):
+            pointer._obj.x, pointer._obj.y = -1920, -240
+            return True
+
+        with patch.object(driver.user32, "GetPhysicalCursorPos", side_effect=physical), patch.object(
+            driver.user32, "GetCursorPos"
+        ) as logical:
+            self.assertEqual(driver.cursor_position(), (-1920, -240))
+        logical.assert_not_called()
+
+    def test_failed_physical_cursor_query_is_not_reported_as_desktop_origin(self) -> None:
+        with patch.object(driver.user32, "GetPhysicalCursorPos", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "physical cursor"):
+                driver.cursor_position()
 
     def test_broken_or_wrong_shape_cache_is_ignored(self) -> None:
         for cached in ("broken json", "[]", "123", '{"pid":123,"offset":"invalid"}'):
@@ -341,6 +379,9 @@ class NativeRuntimeTests(unittest.TestCase):
 @unittest.skipUnless(sys.platform == "win32", "Windows process-memory/input adapter")
 class LauncherAimTests(unittest.TestCase):
     def setUp(self):
+        dpi = patch.object(driver.window, "per_monitor_dpi", side_effect=lambda: nullcontext())
+        dpi.start()
+        self.addCleanup(dpi.stop)
         self.clock = TickEvent()
         self.memory = SessionMemory(self.clock)
         self.focus = lambda _now: True
@@ -350,7 +391,8 @@ class LauncherAimTests(unittest.TestCase):
         self.statuses = []
 
     def run_worker(self, *, arguments=None, status_callback=None, anchor=None,
-                   auto_activate=True, expected_pid=None):
+                   auto_activate=True, expected_pid=None, rect_provider=None, cursor=(200, 60),
+                   dpi_context=None):
         def source(_delta, *, on_f4, on_escape):
             self.callbacks.update(delta=_delta, f4=on_f4, escape=on_escape)
             return self.source
@@ -358,6 +400,8 @@ class LauncherAimTests(unittest.TestCase):
         gdb = MagicMock()
         valid_gdb_headers(gdb)
         with ExitStack() as stack:
+            self.dpi_context = dpi_context or MagicMock()
+            stack.enter_context(patch.object(driver.window, "per_monitor_dpi", return_value=self.dpi_context))
             stack.enter_context(patch.object(driver, "GdbClient", return_value=gdb))
             stack.enter_context(patch.object(driver.aim, "status", return_value={
                 "state": "installed", "hook_matches": True,
@@ -373,7 +417,8 @@ class LauncherAimTests(unittest.TestCase):
             stack.enter_context(patch.object(driver.window, "find_azahar", return_value=7))
             stack.enter_context(patch.object(driver.user32, "GetForegroundWindow",
                                               side_effect=lambda: 7 if self.focus(self.clock.now) else 8))
-            stack.enter_context(patch.object(driver, "cursor_position", return_value=(200, 60)))
+            stack.enter_context(patch.object(driver, "cursor_position",
+                                              side_effect=cursor if callable(cursor) else lambda: cursor))
             self.mapping = stack.enter_context(patch.object(
                 driver, "mapped_rect",
                 side_effect=lambda _kind, _span, aspect, **_kw: (0, 0, 400, 400 * aspect),
@@ -382,7 +427,7 @@ class LauncherAimTests(unittest.TestCase):
                 ["--hz", "4", *(arguments or [])], stop_event=self.clock,
                 status_callback=status_callback or self.statuses.append,
                 auto_activate=auto_activate, wait_for_battle=True,
-                expected_pid=expected_pid,
+                expected_pid=expected_pid, rect_provider=rect_provider,
             )
 
     def enabled_gates(self):
@@ -416,6 +461,122 @@ class LauncherAimTests(unittest.TestCase):
         with patch.object(driver, "listening_pid", side_effect=AssertionError("unexpected lookup")) as lookup:
             self.assertEqual(self.run_worker(), 0)
         lookup.assert_not_called()
+
+    def test_provider_maps_selected_aspect_rect_and_receives_anchored_pid(self):
+        for aspect in (5 / 3, 16 / 9, 21 / 9):
+            with self.subTest(aspect=aspect):
+                self.setUp()
+                rect = (-1000.0, -240.0, 240.0 * aspect, 240.0)
+                provider = MagicMock(return_value=rect)
+                cursor = (rect[0] + rect[2] / 2, rect[1] + rect[3] / 2)
+                self.assertEqual(self.run_worker(rect_provider=provider, cursor=cursor), 0)
+                self.assertTrue(provider.called)
+                self.assertTrue(all(call.args == (self.memory.pid,) for call in provider.call_args_list))
+                positions = [struct.unpack("<ff", data) for _now, address, data in self.memory.writes
+                             if address == driver.pin.MAILBOX_VA + driver.pin.MB_POS_X]
+                self.assertTrue(positions)
+                for x, y in positions:
+                    self.assertAlmostEqual(x, 200.0)
+                    self.assertAlmostEqual(y, 120.0)
+                self.mapping.assert_not_called()
+
+    def test_provider_refreshes_moved_resized_rect_without_guest_size_change(self):
+        provider = lambda _pid: ((100, 10, 400, 240) if self.clock.now < 0.75
+                                 else (-300, -80, 800, 480))
+        self.assertEqual(self.run_worker(rect_provider=provider), 0)
+        positions = {now: struct.unpack("<ff", data) for now, address, data in self.memory.writes
+                     if address == driver.pin.MAILBOX_VA + driver.pin.MB_POS_X}
+        self.assertEqual(positions[0.5], (100.0, 50.0))
+        self.assertEqual(positions[0.75], (250.0, 70.0))
+        self.assertEqual([write[0] for write in self.enabled_gates()], [0.25])
+        self.mapping.assert_not_called()
+
+    def test_unknown_provider_rect_turns_gate_off_then_valid_rect_reactivates(self):
+        provider = lambda _pid: None if 0.75 <= self.clock.now < 1.25 else (0, 0, 400, 240)
+        self.assertEqual(self.run_worker(rect_provider=provider), 0)
+        self.assertEqual([write[0] for write in self.enabled_gates()], [0.25, 1.25])
+        positions = [now for now, address, _data in self.memory.writes
+                     if address == driver.pin.MAILBOX_VA + driver.pin.MB_POS_X]
+        self.assertFalse(any(0.75 <= now < 1.25 for now in positions))
+        self.assertIn((0.75, driver.pin.MAILBOX_VA + driver.pin.MB_MODE, struct.pack("<I", 0)),
+                      self.memory.writes)
+        self.assertEqual(self.statuses.count("viewport_missing"), 1)
+        self.assertEqual(self.statuses.count("active"), 2)
+        self.mapping.assert_not_called()
+
+    def test_invalid_provider_rect_never_opens_gate_or_falls_back_to_desktop(self):
+        for value in (None, (0, 0, 0, 240), (0, 0, -1, 240), (0, 0, 400, 0),
+                      (0, 0, 400, -1), (float("nan"), 0, 400, 240),
+                      (0, 0, float("inf"), 240), (0, 0, 400), ("bad", 0, 400, 240)):
+            with self.subTest(rect=value):
+                self.setUp()
+                self.assertEqual(self.run_worker(rect_provider=lambda _pid: value), 0)
+                self.assertEqual(self.enabled_gates(), [])
+                self.assertFalse(any(address == driver.pin.MAILBOX_VA + driver.pin.MB_POS_X
+                                     for _now, address, _data in self.memory.writes))
+                self.assertEqual(self.statuses.count("viewport_missing"), 1)
+                self.assertNotIn("active", self.statuses)
+                self.mapping.assert_not_called()
+                self.dpi_context.__exit__.assert_called_once()
+
+    def test_unknown_viewport_does_not_override_menu_or_paused_status(self):
+        self.memory.calls = lambda _now: 0
+        self.memory.size = lambda _now: (0.0, 0.0)
+        self.assertEqual(self.run_worker(rect_provider=lambda _pid: None), 0)
+        self.assertIn("waiting", self.statuses)
+        self.assertNotIn("viewport_missing", self.statuses)
+        self.assertEqual(self.enabled_gates(), [])
+
+        self.setUp()
+        self.clock.on_tick = lambda now: self.callbacks["f4"]() if now == 0.75 else None
+        self.assertEqual(self.run_worker(rect_provider=lambda _pid: None), 0)
+        self.assertEqual(self.statuses.count("viewport_missing"), 1)
+        self.assertIn("off", self.statuses)
+        self.assertNotIn("viewport_missing", self.statuses[self.statuses.index("off") + 1:])
+        self.assertEqual(self.enabled_gates(), [])
+
+    def test_ground_and_relative_modes_do_not_query_the_rect_provider(self):
+        for arguments, controller in (([], 0x14000000), (["--map", "relative"], 0)):
+            with self.subTest(arguments=arguments):
+                self.setUp()
+                self.memory.controller = lambda _now: controller
+                provider = MagicMock(side_effect=AssertionError("not needed in this mode"))
+                self.assertEqual(self.run_worker(arguments=arguments, rect_provider=provider), 0)
+                self.assertTrue(self.enabled_gates())
+                self.assertNotIn("viewport_missing", self.statuses)
+                provider.assert_not_called()
+                self.mapping.assert_not_called()
+
+    def test_provider_and_cursor_are_called_inside_worker_dpi_context(self):
+        current = {"inside": False}
+        context = MagicMock()
+        context.__enter__.side_effect = lambda: current.update(inside=True)
+        context.__exit__.side_effect = lambda *_args: current.update(inside=False)
+
+        def provider(_pid):
+            self.assertTrue(current["inside"])
+            return (0, 0, 400, 240)
+
+        def cursor():
+            self.assertTrue(current["inside"])
+            return (200, 60)
+
+        self.assertEqual(self.run_worker(rect_provider=provider, cursor=cursor, dpi_context=context), 0)
+        self.assertFalse(current["inside"])
+        context.__exit__.assert_called_once()
+
+    def test_provider_exception_closes_gate_and_restores_worker_dpi(self):
+        def provider(_pid):
+            if self.clock.now >= 0.75:
+                raise OSError("window disappeared")
+            return (0, 0, 400, 240)
+
+        with self.assertRaisesRegex(OSError, "window disappeared"):
+            self.run_worker(rect_provider=provider)
+        self.assertIn((0.75, driver.pin.MAILBOX_VA + driver.pin.MB_MODE, struct.pack("<I", 0)),
+                      self.memory.writes)
+        self.assertTrue(self.memory.closed)
+        self.dpi_context.__exit__.assert_called_once()
 
     def test_menu_wait_activates_only_after_guest_hook_activity(self):
         self.memory.calls = lambda now: 0 if now < 0.5 else int((now - 0.5) * 60) + 1

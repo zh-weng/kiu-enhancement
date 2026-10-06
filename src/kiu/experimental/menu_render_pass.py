@@ -23,8 +23,6 @@ import sys
 import time
 from pathlib import Path
 
-from keystone import KS_ARCH_ARM, KS_MODE_ARM, Ks
-
 from ..gdbclient import GdbClient
 
 
@@ -51,8 +49,6 @@ TOP_WIDTH = 400
 ACTIVE_MARKER = 0x00F36820
 MARKER_INACTIVE = 0
 MARKER_ACTIVE = 1
-
-ks = Ks(KS_ARCH_ARM, KS_MODE_ARM)
 
 
 def encode_branch(source: int, target: int) -> bytes:
@@ -127,6 +123,16 @@ def _bottom_and_menu_source(*, restore_width: bool, return_address: int) -> str:
 
 
 def build_cave(cave: int, *, restore_width: bool, return_address: int) -> bytes:
+    if getattr(sys, "frozen", False):
+        import kiu_launcher_payloads as payloads
+        if payloads.BUILD_SHA256 != CODE_SHA256:
+            raise RuntimeError("frozen menu hook targets an unsupported build")
+        raw = payloads.MENU_POST_HOOK if restore_width else payloads.MENU_PRE_HOOK
+        if type(raw) is not bytes or len(raw) != CAVE_SIZE:
+            raise RuntimeError("invalid frozen menu hook payload")
+        return raw
+    from keystone import KS_ARCH_ARM, KS_MODE_ARM, Ks
+    ks = Ks(KS_ARCH_ARM, KS_MODE_ARM)
     raw = bytes(
         ks.asm(
             _bottom_and_menu_source(
@@ -265,11 +271,29 @@ def status(gdb: GdbClient) -> dict[str, object]:
     }
 
 
+def can_revert(gdb: GdbClient) -> bool:
+    """Never erase a cave in execution or split a redirected pre/post pair."""
+    marker = _read_exact(gdb, ACTIVE_MARKER, 4, "pass marker")
+    if marker == struct.pack("<I", MARKER_ACTIVE):
+        return False
+    if marker != struct.pack("<I", MARKER_INACTIVE):
+        raise RuntimeError("unknown render-pass marker; restoration refused")
+    for thread_id in gdb.list_threads():
+        gdb.select_general_thread(thread_id)
+        registers = gdb.read_registers()
+        pc = registers[15]
+        if any(start <= pc < start + CAVE_SIZE for start in (PRE_CAVE, POST_CAVE)):
+            return False
+    return True
+
+
 def revert(gdb: GdbClient) -> dict[str, object]:
     _expect(gdb, PRE_SITE, PRE_REPLACEMENT + THUNK_ORIGINAL[4:], "installed pre-pass thunk")
     _expect(gdb, POST_SITE, POST_REPLACEMENT + THUNK_ORIGINAL[4:], "installed post-pass thunk")
     _expect(gdb, PRE_CAVE, PRE_CAVE_BYTES, "installed pre-pass cave")
     _expect(gdb, POST_CAVE, POST_CAVE_BYTES, "installed post-pass cave")
+    if not can_revert(gdb):
+        raise RuntimeError("menu render pass is busy; resume and retry restoration")
     _write_exact(gdb, PRE_SITE, THUNK_ORIGINAL[:4], "pre-pass restore")
     _write_exact(gdb, POST_SITE, THUNK_ORIGINAL[:4], "post-pass restore")
     _write_exact(
