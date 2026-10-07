@@ -35,6 +35,7 @@ PACKAGE_FILES = (
     "src/kiu/aim_core.py", "src/kiu/aim_protocol.py", "src/kiu/export_cheats.py",
     "src/kiu/gdbclient.py",
     "src/kiu/launcher.py", "src/kiu/launcher_core.py", "src/kiu/game_build.py",
+    "src/kiu/linux_play.py",
     "src/kiu/azahar_display.py", "src/kiu/backends/windows/display_preset.py",
     "src/kiu/patches/__init__.py", "src/kiu/patches/patch_60fps.py",
     "src/kiu/patches/patch_widescreen.py", "src/kiu/patches/patch_aim_request.py",
@@ -42,6 +43,9 @@ PACKAGE_FILES = (
     "src/kiu/backends/__init__.py", "src/kiu/backends/windows/__init__.py",
     "src/kiu/backends/windows/native_fps_aim.py", "src/kiu/backends/windows/guest_memory.py",
     "src/kiu/backends/windows/win_raw_mouse.py", "src/kiu/backends/windows/win_window.py",
+    "src/kiu/backends/linux/__init__.py", "src/kiu/backends/linux/display_preset.py",
+    "src/kiu/backends/linux/launch_process.py", "src/kiu/backends/linux/guest_memory.py",
+    "src/kiu/backends/linux/x11.py", "src/kiu/backends/linux/native_fps_aim.py",
     "src/kiu/experimental/__init__.py", "src/kiu/experimental/menu_render_pass.py",
     "src/kiu/experimental/patch_pitch_limit.py",
 )
@@ -51,6 +55,7 @@ DEV_NAMES = (
 )
 DEV_FILES = (
     "tools/__init__.py", "tools/build_release.py", "tools/build_launcher.py",
+    "scripts/start-linux.sh", "scripts/start-steamdeck.sh",
     *(f"tools/dev/{name}.py" for name in DEV_NAMES),
 )
 REQUIRED_FILES = (

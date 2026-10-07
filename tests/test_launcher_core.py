@@ -542,6 +542,46 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual(self.connections, 1)
         self.assertFalse(any(item[0] == "revert" for item in self.log))
 
+    def test_restore_waits_for_deferred_listener_before_reconnecting(self):
+        self.owner.side_effect = [1234, 1234, None, None, 1234, 1234]
+        session = self.session()
+        session.run()
+        self.assertIsNone(session.error)
+        self.assertEqual(self.connections, 2)
+        self.assertEqual([item[1] for item in self.log if item[0] == "revert"],
+                         ["pin", "aim", "wide", "fps"])
+
+    def test_restore_missing_listener_times_out_without_attach_or_writes(self):
+        self.patch(core, "RESTORE_TIMEOUT", 0)
+        self.owner.side_effect = [1234, 1234, None]
+        session = self.session()
+        session.run()
+        self.assertIn("restoration refused", session.error)
+        self.assertEqual(self.connections, 1)
+        self.assertFalse(any(item[0] == "revert" for item in self.log))
+
+    def test_owner_replacement_after_missing_listener_is_immediately_refused(self):
+        self.owner.side_effect = [1234, 1234, None, 9876]
+        session = self.session()
+        session.run()
+        self.assertIn("another process", session.error)
+        self.assertEqual(self.connections, 1)
+        self.assertFalse(any(item[0] == "revert" for item in self.log))
+
+    def test_emulator_exit_during_listener_wait_does_not_restore(self):
+        def owner(_port):
+            if self.owner.call_count <= 2:
+                return 1234
+            self.process.poll.return_value = 0
+            return None
+
+        self.owner.side_effect = owner
+        session = self.session()
+        session.run()
+        self.assertIsNone(session.error)
+        self.assertEqual(self.connections, 1)
+        self.assertFalse(any(item[0] == "revert" for item in self.log))
+
     def test_explicit_stop_without_restore_leaves_patches(self):
         session = self.session()
 
@@ -575,9 +615,54 @@ class LaunchTests(unittest.TestCase):
                     core.validate_options(self.session(**changes).options)
 
     def test_portable_import_has_no_unsupported_platform_start(self):
-        with mock.patch.object(core.sys, "platform", "linux"):
-            with self.assertRaisesRegex(RuntimeError, "requires Windows"):
+        with mock.patch.object(core.sys, "platform", "darwin"):
+            with self.assertRaisesRegex(RuntimeError, "Windows and Linux"):
                 core.validate_options(self.options)
+
+    def test_linux_launch_uses_xwayland_without_changing_parent_environment(self):
+        azahar = self.azahar.with_name("azahar.AppImage")
+        azahar.write_text("fake AppImage")
+        self.patch(core.sys, "platform", "linux")
+        self.patch(core.os, "access", return_value=True)
+        self.patch(core, "_process_identity", return_value="start")
+        self.patch(core, "_linux_owner_identity", return_value="guest-start")
+        with mock.patch.dict(core.os.environ, {"QT_QPA_PLATFORM": "wayland"}):
+            session = self.session(azahar=azahar)
+            session.run()
+            self.assertIsNone(session.error)
+            self.assertEqual(self.popen.call_args.kwargs["env"]["QT_QPA_PLATFORM"], "xcb")
+            self.assertEqual(core.os.environ["QT_QPA_PLATFORM"], "wayland")
+        self.assertEqual(self.driver.call_args.kwargs["expected_pid"], self.process.pid)
+        self.process.kill.assert_not_called()
+
+    def test_linux_appimage_descendant_is_bound_and_replacement_is_refused(self):
+        self.patch(core.sys, "platform", "linux")
+        identity = self.patch(core, "_linux_owner_identity", return_value="guest-start")
+        session = self.session()
+        session.process = self.process
+        session._launch_identity = "launch-start"
+        self.owner.return_value = 5678
+        self.assertTrue(session._require_owner())
+        identity.assert_called_once_with(5678, 1234, "launch-start")
+        self.assertEqual(session._guest_pid, 5678)
+        identity.return_value = "reused-pid-start"
+        with self.assertRaisesRegex(RuntimeError, "identity changed"):
+            session._require_owner()
+
+    def test_linux_requires_executable_native_emulator(self):
+        self.patch(core.sys, "platform", "linux")
+        access = self.patch(core.os, "access", return_value=True)
+        for name in ("azahar", "azahar-qt", "azahar.AppImage"):
+            native = self.azahar.with_name(name)
+            native.write_text("fake executable")
+            options = self.session(azahar=native).options
+            core.validate_options(options)
+            access.return_value = False
+            with self.assertRaisesRegex(ValueError, "executable"):
+                core.validate_options(options)
+            access.return_value = True
+        with self.assertRaisesRegex(ValueError, "executable"):
+            core.validate_options(self.options)
 
     def dll_kernel(self, previous="frozen-runtime", get_error=0):
         kernel = mock.Mock()

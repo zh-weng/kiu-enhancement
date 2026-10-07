@@ -115,7 +115,7 @@ def parser():
             item.add_argument("--menu-route", action="store_true", help="EXPERIMENTAL, does not remap touch")
         else:
             item.set_defaults(mouse_hooks=False, menu_route=False)
-    aim = sub.add_parser("aim", help="Windows preview mouse helper; run apply separately for FPS/widescreen")
+    aim = sub.add_parser("aim", help="preview mouse helper (Windows/Linux X11); run apply separately for FPS/widescreen")
     aim.add_argument("arguments", nargs=argparse.REMAINDER, help="mouse options after --; see aim -- --help")
     export = sub.add_parser("export-cheats", help="generate enable/restore codes, no ROM required")
     export.add_argument("arguments", nargs=argparse.REMAINDER, help="export options after --")
@@ -130,9 +130,12 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command in ("aim", "export-cheats"):
             options = args.arguments[1:] if args.arguments[:1] == ["--"] else args.arguments
             if args.command == "aim":
-                if sys.platform != "win32":
-                    raise RuntimeError("the current mouse helper requires Windows; cheats do not")
-                from .backends.windows.native_fps_aim import main as run
+                if sys.platform == "linux":
+                    from .backends.linux.native_fps_aim import main as run
+                elif sys.platform == "win32":
+                    from .backends.windows.native_fps_aim import main as run
+                else:
+                    raise RuntimeError("the mouse helper supports Windows and Linux/X11")
             else:
                 from .export_cheats import main as run
             return run(options)

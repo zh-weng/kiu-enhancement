@@ -1,4 +1,4 @@
-"""A single, cancellable Windows launch session for stock Azahar.
+"""A single, cancellable launch session for stock Azahar.
 
 The GUI owns preferences and presentation.  This module owns only the process
 it launches, checked injection, and restoration of patches installed by that
@@ -11,6 +11,7 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 import math
+import os
 from pathlib import Path
 import socket
 import struct
@@ -25,6 +26,7 @@ from .game_build import VerificationCancelled, verify_game
 STARTUP_TIMEOUT = 60.0
 POLL_INTERVAL = 0.2
 GDB_TIMEOUT = 0.5
+RESTORE_TIMEOUT = 2.0
 
 
 @dataclass(frozen=True)
@@ -42,9 +44,9 @@ class LauncherOptions:
 
 
 def validate_options(options: LauncherOptions) -> None:
-    """Validate the current backend's options without importing Windows APIs."""
-    if sys.platform != "win32":
-        raise RuntimeError("The Launcher backend currently requires Windows; use the CLI on other platforms")
+    """Validate the current backend's options without importing host APIs."""
+    if sys.platform not in ("win32", "linux"):
+        raise RuntimeError("The Launcher currently supports Windows and Linux/X11")
     if options.aspect == "auto":
         if not options.single_screen:
             raise ValueError("Automatic aspect requires single-screen fullscreen mode")
@@ -66,8 +68,12 @@ def validate_options(options: LauncherOptions) -> None:
     if options.single_screen and not options.sync_layout:
         raise ValueError("Single-screen fullscreen requires the display preset option")
     azahar = Path(options.azahar)
-    if azahar.name.lower() != "azahar.exe" or not azahar.is_file():
-        raise ValueError("Select the stock Azahar executable named azahar.exe")
+    if sys.platform == "win32":
+        if azahar.name.lower() != "azahar.exe" or not azahar.is_file():
+            raise ValueError("Select the stock Azahar executable named azahar.exe")
+    elif (azahar.name.lower() not in ("azahar", "azahar-qt", "azahar.appimage")
+          or not azahar.is_file() or not os.access(azahar, os.X_OK)):
+        raise ValueError("Select an executable stock Azahar AppImage or azahar binary")
     if not Path(options.game).is_file():
         raise ValueError("Select your own decrypted CCI/3DS game file")
 
@@ -79,9 +85,23 @@ def _patch_modules():
 
 
 def _port_owner(port: int) -> int | None:
-    # Loaded only after validate_options accepted the Windows backend.
-    from .backends.windows.guest_memory import listening_pid
+    if sys.platform == "linux":
+        from .backends.linux.guest_memory import listening_pid
+    else:
+        from .backends.windows.guest_memory import listening_pid
     return listening_pid(port)
+
+
+def _process_identity(pid: int) -> str | None:
+    if sys.platform == "linux":
+        from .backends.linux.guest_memory import process_identity
+        return process_identity(pid)
+    return None
+
+
+def _linux_owner_identity(owner: int, launched: int, identity: str) -> str:
+    from .backends.linux.launch_process import require_descendant
+    return require_descendant(owner, launched, identity)
 
 
 def _require_free_port(port: int) -> None:
@@ -97,12 +117,18 @@ def _require_free_port(port: int) -> None:
 
 
 def _run_mouse(argv, **options):
-    from .backends.windows.native_fps_aim import main
+    if sys.platform == "linux":
+        from .backends.linux.native_fps_aim import main
+    else:
+        from .backends.windows.native_fps_aim import main
     return main(argv, **options)
 
 
 def _save_display(options):
-    from .backends.windows.display_preset import save_display
+    if sys.platform == "linux":
+        from .backends.linux.display_preset import save_display
+    else:
+        from .backends.windows.display_preset import save_display
     return save_display(Path(options.azahar), options.aspect, single_screen=options.single_screen)
 
 
@@ -112,7 +138,10 @@ def _menu_module():
 
 
 def _top_rect_provider(layout):
-    from .backends.windows.display_preset import top_rect_provider
+    if sys.platform == "linux":
+        from .backends.linux.display_preset import top_rect_provider
+    else:
+        from .backends.windows.display_preset import top_rect_provider
     return top_rect_provider(layout)
 
 
@@ -174,6 +203,9 @@ class LauncherSession:
         self._loaded = {}
         self._owned: list[str] = []
         self._aspect = options.aspect
+        self._launch_identity = None
+        self._guest_pid = None
+        self._guest_identity = None
 
     @property
     def alive(self) -> bool:
@@ -204,8 +236,17 @@ class LauncherSession:
         owner = _port_owner(self.options.port)
         if owner is None:
             return False
-        if self.process is None or owner != self.process.pid:
+        if self.process is None:
             raise RuntimeError("GDB port belongs to another process; refusing to attach")
+        if sys.platform == "linux":
+            identity = _linux_owner_identity(owner, self.process.pid, self._launch_identity)
+            if self._guest_pid is not None and (owner, identity) != (self._guest_pid, self._guest_identity):
+                raise RuntimeError("GDB process identity changed; refusing to attach")
+            self._guest_pid, self._guest_identity = owner, identity
+        elif owner != self.process.pid:
+            raise RuntimeError("GDB port belongs to another process; refusing to attach")
+        else:
+            self._guest_pid = owner
         return True
 
     def _check_mouse_abi(self, gdb, names) -> None:
@@ -319,11 +360,18 @@ class LauncherSession:
     def _restore_owned(self) -> None:
         if not self.restore_requested or not self._owned or not self._process_running():
             return
-        if not self._require_owner():
-            raise RuntimeError("Cannot verify GDB ownership; restoration refused")
         self._status("正在恢复本次 Launcher 安装的增强")
-        deadline = time.monotonic() + 2.0
+        deadline = time.monotonic() + RESTORE_TIMEOUT
         while True:
+            # Azahar may reopen its listener shortly after a GDB connection
+            # closes. Retry absence only; a wrong PID/identity still raises
+            # immediately from _require_owner, before any attach or write.
+            while not self._require_owner():
+                if not self._process_running():
+                    return
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Cannot verify GDB ownership; restoration refused")
+                time.sleep(POLL_INTERVAL)
             busy = False
             with guest_session(self.options.port, timeout=GDB_TIMEOUT) as gdb:
                 if not self._require_owner():
@@ -371,13 +419,19 @@ class LauncherSession:
             azahar = Path(self.options.azahar).resolve()
             game = Path(self.options.game).resolve()
             self._status("正在启动 Azahar")
+            launch_options = {"cwd": azahar.parent, "shell": False}
+            if sys.platform == "linux":
+                # The native mouse adapter binds X11 windows and XI2 events.
+                # XWayland supports this on KDE Wayland; native Qt Wayland does not.
+                launch_options["env"] = {**os.environ, "QT_QPA_PLATFORM": "xcb"}
             with _external_program_dll_path():
                 self.process = subprocess.Popen(
                     # Some official Windows builds reject the long spelling.
                     [str(azahar), "-g", str(self.options.port),
                      *(["-f"] if self.options.single_screen else []), str(game)],
-                    cwd=azahar.parent, shell=False,
+                    **launch_options,
                 )
+            self._launch_identity = _process_identity(self.process.pid)
             self._loaded = _patch_modules()
             if self.options.menu_route:
                 self._loaded["menu"] = _menu_module()
@@ -392,7 +446,7 @@ class LauncherSession:
                 _run_mouse(
                     ["--port", str(self.options.port), "--sensitivity", str(self.options.sensitivity)],
                     stop_event=self._stop_event, status_callback=self._status,
-                    auto_activate=True, wait_for_battle=True, expected_pid=self.process.pid,
+                    auto_activate=True, wait_for_battle=True, expected_pid=self._guest_pid,
                     rect_provider=rectangle,
                 )
             else:

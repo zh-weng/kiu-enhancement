@@ -232,7 +232,25 @@ GDB 负责停 guest、验证原字节与空 cave、写 hook、初始化关闭状
 `MemoryTransport` 提供精确 guest 数据读写与 close；`InputSource` 提供相对设备 counts 与生命周期；
 `WindowContext` 提供焦点、同一物理像素坐标系、viewport 或未知值。
 输入回调不做 transport I/O，未知 viewport 不猜布局，接口不公开 Win32 句柄。
-Linux/macOS 后端尚未实现；输入权限、Wayland/macOS 窗口访问仍需各平台处理。
+Linux 后端现有源码 preview：`src/kiu/backends/linux/`。XI2 提供原始相对 counts，
+`process_vm_readv/writev` 只开放 ABI 1 的两块 mailbox，fresh nonce 扫描且拒绝多个命中，
+同时校验 PID/starttime。Launcher 必须是模拟器的父进程（或已验证的 AppImage 祖先进程），
+不修改 Yama/ptrace 安全策略、不要求 root。启动前先初始化 Xlib，再创建 Tk。
+Qt 以 `xcb` 运行于 X11/XWayland；当前只接受唯一同 PID 的 fullscreen client，
+再按授权 preset 映射上屏，未知区域不回退桌面。Steam Deck Desktop 与 Gaming Mode 的 Vulkan fullscreen canvas 已读取为 1280×800。
+Gamescope 不维护 `_NET_CLIENT_LIST`；仅在 root 的 compositor PID 对应实际 `gamescope` / `gamescope-wl` 时查询 root children。
+游戏 display 与 server 0 控制 display 必须属于同一 compositor；同时核对键盘和鼠标 focus display，避免 Steam overlay 期间继续输入。
+focus display 的 CARDINAL32 保存 NUL 结尾的显示名，不是 server ID；只解析合法本地 display 前缀。
+XI2 必须协商 2.2，libXi 在协商旧协议时会隐藏 raw sourceid；查询设备轴，拒绝绝对触摸/笔输入被误算成陆战相对位移。
+Gaming Mode 的相对 XTEST 输入已收为原始 counts，但不代表物理 Deck 触控板或战斗验收。
+对应实现依据为 [Gamescope](https://github.com/ValveSoftware/gamescope/blob/master/src/steamcompmgr.cpp) 与
+[libXi raw event 解码](https://github.com/mirror/libXi/blob/master/src/XExtInt.c)。
+窗口模式与原生 Qt Wayland 尚不支持。Linux 用 F12 暂停瞄准，避开原生 F4 游戏暂停；
+Windows 保持 F4，不改模拟器的键位。游戏 hook 与 ABI 1 完全不变。
+调试连接断开后端口可能短暂消失；在已绑定进程仍存活且 starttime 不变时最多等待两秒，
+其他 PID、身份变化或未知代码仍立即拒绝。旧 2123.2 的 cold-start 调试断开后无法按当前流程重连，
+Deck 部署改用并存的官方 2126.1.1，不覆盖原模拟器。操作和独立配置见 README 的 Linux 部分。
+macOS 后端仍未实现。
 修改宿主后端不应改变 guest ABI。CLI 帮助、导出、hash 校验不应加载 Windows 输入模块。
 
 当前没有完整读档自动恢复。PID 不变、magic/version 相同，都不能证明宿主映射仍有效。
@@ -244,7 +262,7 @@ Launcher 另外管理本次 owned hook 的恢复，两种退出语义不要混�
 Windows 玩家 EXE 使用构建时固定 payload，不依赖 Keystone 运行库：五个自写 hook（含可选菜单路由）由当前 ARM 源生成，
 精确比对 canonical cave bytes；冻结加载核对 build hash 并继续运行 Capstone pool 契约。
 这不改变 guest 代码、mailbox 或 ABI。生成文件只在 `local/build/`，玩家包不含游戏镜像。
-GUI 使用现有 Tk；Linux/macOS Launcher 与原生输入后端仍未实现，不增加新的框架承诺。
+GUI 使用现有 Tk；Linux 为源码 preview，macOS 尚未实现，不增加新的框架承诺。
 
 后续可小范围验证官方 [RPC guest 内存接口](https://github.com/azahar-emu/azahar/blob/2126.1.2/src/core/rpc/rpc_server.cpp)
 替代平台专属内存扫描；性能、时序、发行构建可用性与读档恢复尚未验收。

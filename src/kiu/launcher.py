@@ -19,10 +19,19 @@ DEFAULTS = {"azahar": "", "game": "", "fps": True, "aspect": "自动（全屏）
             "sync_layout": True, "display_consent": False,
             "single_screen": True, "menu_route": False, "display_consent_version": 2}
 MOUSE_STATUS = {"connecting": "正在连接鼠标 hook…", "anchoring": "正在定位鼠标内存（首次可能约 30 秒）…",
-                "waiting": "增强已安装，等待进入战斗…", "active": "鼠标瞄准已启用 · F4 可暂停",
-                "off": "鼠标已暂停 · F4 可重新启用", "inactive": "鼠标待机：游戏失焦或战斗未活动",
-                "viewport_missing": "空战鼠标待机：上屏区域未知或被裁切（当前仅支持 OpenGL）",
+                "waiting": "增强已安装，等待进入战斗…", "active": "鼠标瞄准已启用 · {toggle} 可暂停",
+                "off": "鼠标已暂停 · {toggle} 可重新启用", "inactive": "鼠标待机：游戏失焦或战斗未活动",
+                "viewport_missing": "空战鼠标待机：上屏区域未知或被裁切",
                 "complete": "鼠标输入已停止"}
+
+
+def mouse_toggle_key() -> str:
+    return "F12" if sys.platform.startswith("linux") else "F4"
+
+
+def mouse_status_text(value: str) -> str:
+    template = MOUSE_STATUS.get(value)
+    return template.format(toggle=mouse_toggle_key()) if template is not None else value
 
 
 def settings_path() -> Path:
@@ -99,7 +108,7 @@ class LauncherApp:
         except (OSError, ValueError, TypeError) as exc:
             warning = f"无法读取上次设置，将使用默认值：{exc}"
 
-        root.title("KIU Launcher — Windows Preview")
+        root.title("KIU Launcher — " + ("Linux Preview" if sys.platform == "linux" else "Windows Preview"))
         root.geometry("740x610")
         root.minsize(700, 580)
         root.columnconfigure(0, weight=1)
@@ -172,8 +181,9 @@ class LauncherApp:
                            font=("Segoe UI", 9))
         self.log.grid(row=7, column=0, columnspan=3, sticky="nsew")
         frame.rowconfigure(7, weight=1)
-        ttk.Label(frame, text="进入战斗且窗口有焦点时自动瞄准；F4 暂停。即时读档前先停止增强。\n"
-                  "F9 复用 Azahar 上/下屏切换，切下屏前用 F4 暂停瞄准。注入不重排菜单或修复触控。\n"
+        toggle = mouse_toggle_key()
+        ttk.Label(frame, text=f"进入战斗且窗口有焦点时自动瞄准；{toggle} 暂停。即时读档前先停止增强。\n"
+                  f"F9 复用 Azahar 上/下屏切换，切下屏前用 {toggle} 暂停瞄准。注入不重排菜单或修复触控。\n"
                   "改选项需停止并关闭 Azahar 后再开始；停止不撤销显示 preset。", wraplength=690).grid(
             row=8, column=0, columnspan=3, sticky="w", pady=(12, 0))
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -182,7 +192,7 @@ class LauncherApp:
         root.after(100, self.poll)
 
     def report(self, message: str):
-        message = MOUSE_STATUS.get(message, message)
+        message = mouse_status_text(message)
         self.status.set(message)
         self.log.configure(state="normal")
         self.log.insert("end", message + "\n")
@@ -196,7 +206,8 @@ class LauncherApp:
         variable = self.azahar if kind == "azahar" else self.game
         filename = filedialog.askopenfilename(parent=self.root,
             title="选择 Azahar" if kind == "azahar" else "选择自己提供的已解密 USA v0 CCI",
-            filetypes=[("Azahar", "*.exe"), ("所有文件", "*")] if kind == "azahar" else
+            filetypes=[("Azahar", "*.AppImage" if sys.platform == "linux" else "*.exe"),
+                       ("所有文件", "*")] if kind == "azahar" else
                       [("3DS CCI 游戏", "*.cci *.3ds"), ("所有文件", "*")])
         if filename:
             variable.set(filename)
@@ -281,7 +292,10 @@ class LauncherApp:
 
 
 def prepare_tk():
-    """Keep Conda's DLL search handle alive; no global environment edits."""
+    """Initialize Xlib before Tk; keep Conda's DLL handle alive on Windows."""
+    if sys.platform.startswith("linux"):
+        from .backends.linux.x11 import initialize_xlib
+        initialize_xlib()
     if sys.platform == "win32" and not getattr(sys, "frozen", False):
         directory = Path(sys.prefix) / "Library/bin"
         if directory.is_dir():
