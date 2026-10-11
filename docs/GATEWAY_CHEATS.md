@@ -14,6 +14,14 @@ python run_kiu.py export-cheats
 或复制到该模拟器用户数据目录的 `cheats/` 下；目录位置随平台/配置不同。
 安装项目后也可使用 `kiu-enhance export-cheats` 或 `python -m kiu export-cheats`。
 
+只分享已接受的 60 FPS 与 16:9 / 21:9 宽屏（含恢复码，不含实验项）时使用：
+
+```sh
+python run_kiu.py export-cheats -- --basic --output local/cheats-basic/0004000000030100.txt --manifest local/cheats-basic/patches.json
+```
+
+基础版恰好五项：60 FPS 启用/恢复、两种宽屏启用、宽屏恢复。补丁和字节检查保持不变。
+
 ## 已整理的项目
 
 | 功能 | 能否单独作为金手指 | 启动项 | 取消/恢复项 |

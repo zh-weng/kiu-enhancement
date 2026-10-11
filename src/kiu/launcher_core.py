@@ -41,6 +41,9 @@ class LauncherOptions:
     sync_layout: bool = False
     single_screen: bool = False
     menu_route: bool = False
+    experimental_pitch_degrees: float | None = None
+    experimental_no_recenter: bool = False
+    experimental_button_dash: bool = False
 
 
 def validate_options(options: LauncherOptions) -> None:
@@ -59,10 +62,20 @@ def validate_options(options: LauncherOptions) -> None:
         raise ValueError("Aspect must be off, 5:3, 16:9, or 21:9")
     if not math.isfinite(options.sensitivity) or options.sensitivity <= 0:
         raise ValueError("Mouse sensitivity must be a finite positive number")
+    if options.experimental_pitch_degrees is not None and (
+        type(options.experimental_pitch_degrees) not in (int, float)
+        or not math.isfinite(options.experimental_pitch_degrees)
+        or not 0 < options.experimental_pitch_degrees <= 89
+    ):
+        raise ValueError("Experimental pitch must be in (0, 89] degrees")
     if type(options.port) is not int or not 1 <= options.port <= 65535:
         raise ValueError("GDB port must be an integer between 1 and 65535")
     if type(options.sync_layout) is not bool:
         raise ValueError("Display preset selection must be a boolean")
+    if type(options.experimental_no_recenter) is not bool:
+        raise ValueError("Experimental no-recenter selection must be a boolean")
+    if type(options.experimental_button_dash) is not bool:
+        raise ValueError("Experimental button-dash selection must be a boolean")
     if any(type(value) is not bool for value in (options.single_screen, options.menu_route)):
         raise ValueError("Single-screen and menu injection selections must be boolean")
     if options.single_screen and not options.sync_layout:
@@ -135,6 +148,21 @@ def _save_display(options):
 def _menu_module():
     from .experimental import menu_render_pass
     return menu_render_pass
+
+
+def _pitch_module(degrees):
+    from .experimental.patch_pitch_limit import SessionPatch
+    return SessionPatch(degrees)
+
+
+def _recenter_module():
+    from .experimental import patch_no_recenter
+    return patch_no_recenter
+
+
+def _dash_module():
+    from .experimental import patch_button_dash
+    return patch_button_dash
 
 
 def _top_rect_provider(layout):
@@ -285,6 +313,12 @@ class LauncherSession:
             + (["aim", "pin"] if self.options.mouse else [])
         if self.options.menu_route:
             selected.append("menu")
+        if self.options.experimental_pitch_degrees is not None:
+            selected.append("pitch")
+        if self.options.experimental_no_recenter:
+            selected.append("recenter")
+        if self.options.experimental_button_dash:
+            selected.append("dash")
         checked = selected + (["wide"] if self.options.sync_layout and "wide" not in selected else [])
         deadline = time.monotonic() + STARTUP_TIMEOUT
         self._status("等待 Azahar 和游戏初始化")
@@ -435,6 +469,12 @@ class LauncherSession:
             self._loaded = _patch_modules()
             if self.options.menu_route:
                 self._loaded["menu"] = _menu_module()
+            if self.options.experimental_pitch_degrees is not None:
+                self._loaded["pitch"] = _pitch_module(self.options.experimental_pitch_degrees)
+            if self.options.experimental_no_recenter:
+                self._loaded["recenter"] = _recenter_module()
+            if self.options.experimental_button_dash:
+                self._loaded["dash"] = _dash_module()
             self._install()
             self._check_cancel()
             if self.options.mouse:

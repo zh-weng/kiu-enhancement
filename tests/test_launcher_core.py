@@ -207,6 +207,113 @@ class LaunchTests(unittest.TestCase):
         self.assertEqual([item[1] for item in self.log if item[0] == "revert"],
                          ["menu", "pin", "aim", "wide", "fps"])
 
+    def test_pitch_is_lazy_opt_in_and_session_owned(self):
+        pitch = Patch("pitch", self.log)
+        factory = self.patch(core, "_pitch_module", return_value=pitch)
+        self.session().run()
+        factory.assert_not_called()
+        self.log.clear()
+        session = self.session(experimental_pitch_degrees=60)
+        session.run()
+        self.assertIsNone(session.error)
+        factory.assert_called_once_with(60)
+        self.assertEqual([item[1] for item in self.log if item[0] == "apply"],
+                         ["fps", "wide", "aim", "pin", "pitch"])
+        self.assertEqual([item[1] for item in self.log if item[0] == "revert"],
+                         ["pitch", "pin", "aim", "wide", "fps"])
+
+    def test_existing_pitch_is_not_adopted_or_restored(self):
+        self.patch(core, "_pitch_module", return_value=Patch("pitch", self.log, "installed"))
+        session = self.session(experimental_pitch_degrees=60)
+        session.run()
+        self.assertIsNone(session.error)
+        self.assertFalse(any(item[:2] in (("apply", "pitch"), ("revert", "pitch")) for item in self.log))
+
+    def test_no_recenter_is_lazy_opt_in_and_session_owned(self):
+        recenter = Patch("recenter", self.log)
+        factory = self.patch(core, "_recenter_module", return_value=recenter)
+        self.session().run()
+        factory.assert_not_called()
+        self.log.clear()
+        session = self.session(experimental_no_recenter=True)
+        session.run()
+        self.assertIsNone(session.error)
+        factory.assert_called_once_with()
+        self.assertEqual([item[1] for item in self.log if item[0] == "apply"],
+                         ["fps", "wide", "aim", "pin", "recenter"])
+        self.assertEqual([item[1] for item in self.log if item[0] == "revert"],
+                         ["recenter", "pin", "aim", "wide", "fps"])
+
+    def test_existing_no_recenter_is_not_adopted_or_restored(self):
+        self.patch(core, "_recenter_module", return_value=Patch("recenter", self.log, "installed"))
+        session = self.session(experimental_no_recenter=True)
+        session.run()
+        self.assertIsNone(session.error)
+        self.assertFalse(any(item[:2] in (("apply", "recenter"), ("revert", "recenter"))
+                             for item in self.log))
+
+    def test_button_dash_is_lazy_opt_in_and_owned_restore(self):
+        factory = self.patch(core, "_dash_module", return_value=Patch("dash", self.log))
+        self.session().run()
+        factory.assert_not_called()
+        self.log.clear()
+        session = self.session(experimental_button_dash=True)
+        session.run()
+        self.assertIsNone(session.error)
+        factory.assert_called_once_with()
+        self.assertEqual([item[1] for item in self.log if item[0] == "apply"],
+                         ["fps", "wide", "aim", "pin", "dash"])
+        self.assertEqual([item[1] for item in self.log if item[0] == "revert"],
+                         ["dash", "pin", "aim", "wide", "fps"])
+
+    def test_unknown_button_dash_refuses_before_any_install(self):
+        self.patch(core, "_dash_module", return_value=Patch("dash", self.log, "unknown"))
+        session = self.session(experimental_button_dash=True)
+        session.run()
+        self.assertIn("unknown/mixed", session.error)
+        self.assertFalse(any(item[0] == "apply" for item in self.log))
+
+    def test_existing_button_dash_is_not_adopted_or_restored(self):
+        self.patch(core, "_dash_module", return_value=Patch("dash", self.log, "installed"))
+        session = self.session(experimental_button_dash=True)
+        session.run()
+        self.assertIsNone(session.error)
+        self.assertFalse(any(item[:2] in (("apply", "dash"), ("revert", "dash")) for item in self.log))
+
+    def test_invalid_button_dash_fails_before_launch(self):
+        session = self.session(experimental_button_dash=1)
+        session.run()
+        self.assertIn("Experimental button-dash", session.error)
+        self.popen.assert_not_called()
+
+    def test_unknown_no_recenter_refuses_entire_install(self):
+        self.patch(core, "_recenter_module", return_value=Patch("recenter", self.log, "unknown"))
+        session = self.session(experimental_no_recenter=True)
+        session.run()
+        self.assertIn("unknown/mixed", session.error)
+        self.assertFalse(any(item[0] == "apply" for item in self.log))
+
+    def test_invalid_no_recenter_fails_before_launch(self):
+        session = self.session(experimental_no_recenter=1)
+        session.run()
+        self.assertIn("Experimental no-recenter", session.error)
+        self.popen.assert_not_called()
+
+    def test_unknown_pitch_refuses_entire_install(self):
+        self.patch(core, "_pitch_module", return_value=Patch("pitch", self.log, "unknown"))
+        session = self.session(experimental_pitch_degrees=60)
+        session.run()
+        self.assertIn("unknown/mixed", session.error)
+        self.assertFalse(any(item[0] == "apply" for item in self.log))
+
+    def test_invalid_pitch_fails_before_launch(self):
+        for degrees in (0, -1, 90, float("nan"), float("inf"), True):
+            with self.subTest(degrees=degrees):
+                session = self.session(experimental_pitch_degrees=degrees)
+                session.run()
+                self.assertIn("Experimental pitch", session.error)
+        self.popen.assert_not_called()
+
     def test_existing_menu_is_not_owned_or_restored(self):
         menu = Patch("menu", self.log, state="installed")
         menu.can_revert = mock.Mock()

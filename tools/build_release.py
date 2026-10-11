@@ -48,6 +48,7 @@ PACKAGE_FILES = (
     "src/kiu/backends/linux/x11.py", "src/kiu/backends/linux/native_fps_aim.py",
     "src/kiu/experimental/__init__.py", "src/kiu/experimental/menu_render_pass.py",
     "src/kiu/experimental/patch_pitch_limit.py",
+    "src/kiu/experimental/patch_no_recenter.py", "src/kiu/experimental/patch_button_dash.py",
 )
 DEV_NAMES = (
     "__init__", "armscan", "extract_kiu_textures", "find_arm_mem_refs",

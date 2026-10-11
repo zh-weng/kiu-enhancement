@@ -41,6 +41,8 @@ class ReleaseTests(unittest.TestCase):
             self.assertNotIn("tools/kiu_cli.py", files)
             self.assertNotIn("docs/CLEANUP.md", files)
             self.assertIn("src/kiu/cli.py", files)
+            self.assertIn("src/kiu/experimental/patch_no_recenter.py", files)
+            self.assertIn("src/kiu/experimental/patch_button_dash.py", files)
             self.assertIn("tools/dev/prepare_kiu.py", files)
             self.assertNotIn("tools/rogue.dll", files)
             self.assertNotIn("tests/game.bin", files)

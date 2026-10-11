@@ -16,7 +16,9 @@ class ConsentTests(unittest.TestCase):
         app.root, app.session = object(), None
         for key, value in {"azahar": "azahar.exe", "game": "game.cci", "fps": True,
                            "mouse": True, "aspect": "16:9", "sensitivity": "0.0025",
-                           "sync_layout": sync, "single_screen": False, "menu_route": False}.items():
+                           "sync_layout": sync, "single_screen": False, "menu_route": False,
+                           "pitch_enabled": False, "pitch_degrees": "60",
+                           "no_recenter": False, "button_dash": False}.items():
             setattr(app, key, SimpleNamespace(get=lambda value=value: value))
         app.display_consent = consent
         app.preferences = Path("unused/preferences.json")

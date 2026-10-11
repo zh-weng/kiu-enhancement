@@ -36,6 +36,11 @@ CODE_PATH = ROOT / "local/extracted/exefs_code.bin"
 # Write beside the user's working directory, never into installed site-packages.
 CHEAT_PATH = Path(f"local/cheats/{TITLE_ID}.txt")
 MANIFEST_PATH = Path("local/cheats/gateway_cheats.json")
+BASIC_SECTIONS = (
+    "60 FPS - Enable", "60 FPS - Restore 30 FPS",
+    "Widescreen 16-9 - Enable", "Widescreen 21-9 - Enable",
+    "Widescreen - Restore 5-3",
+)
 
 
 @dataclass(frozen=True)
@@ -332,7 +337,7 @@ def verify_image(groups: list[list[StaticPatch]], code_path: Path = CODE_PATH) -
     return blob
 
 
-def validate_cheat_text(text: str) -> None:
+def validate_cheat_text(text: str, *, expected_sections: int = 12) -> None:
     sections = 0
     for number, line in enumerate(text.splitlines(), 1):
         if not line or line.startswith("*"):
@@ -342,8 +347,8 @@ def validate_cheat_text(text: str) -> None:
             continue
         if not re.fullmatch(r"[0-9A-F]{8} [0-9A-F]{8}", line):
             raise RuntimeError(f"invalid Gateway line {number}: {line!r}")
-    if sections != 12:
-        raise RuntimeError(f"expected 12 cheat sections, got {sections}")
+    if sections != expected_sections:
+        raise RuntimeError(f"expected {expected_sections} cheat sections, got {sections}")
 
 
 def build(code_path: Path | None = None) -> tuple[str, dict[str, object]]:
@@ -534,14 +539,32 @@ def build(code_path: Path | None = None) -> tuple[str, dict[str, object]]:
     return text, manifest
 
 
+def build_basic(code_path: Path | None = None) -> tuple[str, dict[str, object]]:
+    """Export only the accepted standalone FPS/widescreen codes, unchanged."""
+    text, manifest = build()
+    parts = re.split(r"(?m)(?=^\[)", text)
+    selected = [part for part in parts if part.partition("\n")[0][1:-1] in BASIC_SECTIONS]
+    text = "".join(selected)
+    validate_cheat_text(text, expected_sections=len(BASIC_SECTIONS))
+    if code_path is not None:
+        caves, entries = fps_patches()
+        verify_image([caves + entries, widescreen_patches(16 / 9), widescreen_patches(21 / 9)], code_path)
+    manifest = {key: value for key, value in manifest.items() if key != "excluded"}
+    manifest["features"] = {key: manifest["features"][key] for key in ("60_fps", "widescreen")}
+    manifest["generated_cheat"] = f"{TITLE_ID}.txt"
+    return text, manifest
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verify-code", type=Path,
                         help="optionally verify against your own extracted code.bin")
     parser.add_argument("--output", type=Path, default=CHEAT_PATH)
     parser.add_argument("--manifest", type=Path, default=MANIFEST_PATH)
+    parser.add_argument("--basic", action="store_true",
+                        help="export only 60 FPS and 16:9/21:9 widescreen, including Restore entries")
     args = parser.parse_args(argv)
-    text, manifest = build(args.verify_code)
+    text, manifest = (build_basic if args.basic else build)(args.verify_code)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.manifest.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(text, encoding="utf-8", newline="\n")

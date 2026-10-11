@@ -24,6 +24,8 @@ class LinuxPlayTests(unittest.TestCase):
         self.assertTrue(options.single_screen)
         self.assertTrue(options.mouse)
         self.assertFalse(options.menu_route)
+        self.assertFalse(options.experimental_no_recenter)
+        self.assertFalse(options.experimental_button_dash)
         validate.assert_called_once_with(options)
 
     def test_headless_entry_does_not_grant_display_consent(self):
@@ -32,6 +34,18 @@ class LinuxPlayTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "not been authorized"):
                 play.load_options(Path("prefs.json"))
             validate.assert_not_called()
+
+    def test_gaming_mode_uses_saved_camera_and_movement_choices(self):
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled), \
+                    mock.patch.object(play, "load_preferences", return_value=self.values(
+                        experimental_pitch_enabled=enabled, experimental_pitch_degrees=72,
+                        experimental_no_recenter=enabled, experimental_button_dash=enabled)), \
+                    mock.patch.object(play, "validate_options"):
+                options = play.load_options(Path("prefs.json"))
+            self.assertEqual(options.experimental_pitch_degrees, 72 if enabled else None)
+            self.assertEqual(options.experimental_no_recenter, enabled)
+            self.assertEqual(options.experimental_button_dash, enabled)
 
     def test_no_display_preset_needs_no_display_consent(self):
         with mock.patch.object(play, "load_preferences", return_value=self.values(
@@ -82,6 +96,55 @@ class LinuxPlayTests(unittest.TestCase):
 
     def test_session_error_is_nonzero(self):
         self.assertEqual(self.run_main(error="failed").result, 1)
+
+    def test_explicit_pitch_flag_is_validated_before_session_creation(self):
+        with mock.patch.object(play.sys, "platform", "linux"), \
+                mock.patch.object(play, "load_options", return_value=play.LauncherOptions(
+                    Path("azahar.AppImage"), Path("game.cci"))) as load, \
+                mock.patch.object(play, "validate_options") as validate, \
+                mock.patch.object(play, "LauncherSession", return_value=mock.Mock(error=None)) as factory, \
+                mock.patch.object(play.signal, "signal"):
+            self.assertEqual(play.main(["--experimental-pitch-degrees", "60"]), 0)
+            options = factory.call_args.args[0]
+            self.assertEqual(options.experimental_pitch_degrees, 60)
+            validate.assert_called_once_with(options)
+
+    def test_invalid_pitch_flag_does_not_start_session(self):
+        with mock.patch.object(play.sys, "platform", "linux"), \
+                mock.patch.object(play, "load_options", return_value=play.LauncherOptions(
+                    Path("azahar.AppImage"), Path("game.cci"))), \
+                mock.patch.object(play, "LauncherSession") as factory, \
+                mock.patch.object(play.sys, "stderr"):
+            self.assertEqual(play.main(["--experimental-pitch-degrees", "90"]), 1)
+            factory.assert_not_called()
+
+    def test_explicit_no_recenter_flag_is_validated_before_session_creation(self):
+        with mock.patch.object(play.sys, "platform", "linux"), \
+                mock.patch.object(play, "load_options", return_value=play.LauncherOptions(
+                    Path("azahar.AppImage"), Path("game.cci"))), \
+                mock.patch.object(play, "validate_options") as validate, \
+                mock.patch.object(play, "LauncherSession", return_value=mock.Mock(error=None)) as factory, \
+                mock.patch.object(play.signal, "signal"):
+            self.assertEqual(play.main(["--experimental-no-recenter"]), 0)
+            options = factory.call_args.args[0]
+            self.assertTrue(options.experimental_no_recenter)
+            validate.assert_called_once_with(options)
+
+    def test_no_recenter_keeps_existing_pitch_selection(self):
+        with mock.patch.object(play.sys, "platform", "linux"), \
+                mock.patch.object(play, "load_options", return_value=play.LauncherOptions(
+                    Path("azahar.AppImage"), Path("game.cci"))), \
+                mock.patch.object(play, "validate_options"), \
+                mock.patch.object(play, "LauncherSession", return_value=mock.Mock(error=None)) as factory, \
+                mock.patch.object(play.signal, "signal"):
+            self.assertEqual(play.main([
+                "--experimental-pitch-degrees", "60", "--experimental-no-recenter",
+                "--experimental-button-dash"
+            ]), 0)
+            options = factory.call_args.args[0]
+            self.assertEqual(options.experimental_pitch_degrees, 60)
+            self.assertTrue(options.experimental_no_recenter)
+            self.assertTrue(options.experimental_button_dash)
 
     def test_missing_preferences_returns_actionable_error_without_launch(self):
         with mock.patch.object(play.sys, "platform", "linux"), \

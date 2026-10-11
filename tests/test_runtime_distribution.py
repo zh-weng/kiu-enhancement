@@ -81,7 +81,8 @@ assert 'mouse_look_live' not in sys.modules
 assert 'numpy' not in sys.modules
 """
         names = ["kiu.patches.patch_aim_request", "kiu.patches.pin_reticle",
-                 "kiu.experimental.patch_pitch_limit", "kiu.experimental.menu_render_pass"]
+                 "kiu.experimental.patch_pitch_limit", "kiu.experimental.menu_render_pass",
+                 "kiu.experimental.patch_no_recenter", "kiu.experimental.patch_button_dash"]
         if sys.platform == "win32":
             names.append("kiu.backends.windows.native_fps_aim")
         with tempfile.TemporaryDirectory() as directory:
@@ -219,6 +220,71 @@ assert 'numpy' not in sys.modules
         self.assertEqual(len(result["sites"]), 4)
         self.assertAlmostEqual(pitch.set_limit(guest, 85)["limit_deg"], 85, places=4)
         self.assertTrue(pitch.revert(guest)["stock"])
+
+    def test_pitch_session_checks_exact_bytes_and_never_resumes_mid_transaction(self):
+        guest = pitch_guest()
+        adapter = pitch.SessionPatch(60)
+        self.assertEqual(adapter.status(guest)["state"], "stock")
+        result = adapter.apply(guest)
+        self.assertEqual(len(result["sites"]), 4)
+        self.assertEqual(adapter.status(guest)["state"], "installed")
+        self.assertEqual(guest.resumes, 0)
+        adapter.revert(guest)
+        self.assertEqual(adapter.status(guest)["state"], "stock")
+        self.assertEqual(guest.resumes, 0)
+
+    def test_pitch_session_refuses_another_setting_or_mixed_bytes(self):
+        for modify in (lambda g: pitch.set_limit(g, 85),
+                       lambda g: g.load(pitch.LOWER_MOVE_VA, pitch.STOCK_LOWER_MOVE)):
+            guest = pitch_guest()
+            adapter = pitch.SessionPatch(60)
+            adapter.apply(guest)
+            modify(guest)
+            guest.writes.clear()
+            with self.assertRaises(RuntimeError):
+                adapter.revert(guest)
+            self.assertEqual(guest.writes, [])
+
+    def test_pitch_session_rolls_back_each_failed_write_without_resuming(self):
+        for restore in (False, True):
+            for failed_index in range(4):
+                with self.subTest(restore=restore, failed_index=failed_index):
+                    guest = pitch_guest()
+                    adapter = pitch.SessionPatch(60)
+                    if restore:
+                        adapter.apply(guest)
+                    before = dict(guest.memory)
+                    write = guest.write_mem
+
+                    def fail(address, raw):
+                        write(address, raw)
+                        if address == adapter.sites[failed_index]:
+                            raise OSError("lost write reply")
+
+                    with patch.object(guest, "write_mem", side_effect=fail):
+                        with self.assertRaises(OSError):
+                            (adapter.revert if restore else adapter.apply)(guest)
+                    self.assertEqual(guest.memory, before)
+                    self.assertEqual(guest.resumes, 0)
+
+    def test_pitch_session_rollback_never_overwrites_foreign_partial_bytes(self):
+        guest = pitch_guest()
+        adapter = pitch.SessionPatch(60)
+        write = guest.write_mem
+
+        def fail(address, raw):
+            if address == adapter.sites[1]:
+                guest.load(address, b"????")
+                raise OSError("foreign write")
+            write(address, raw)
+
+        with patch.object(guest, "write_mem", side_effect=fail):
+            with self.assertRaises(OSError) as error:
+                adapter.apply(guest)
+        self.assertEqual(guest.read_mem(adapter.sites[1], 4), b"????")
+        self.assertEqual(guest.read_mem(adapter.sites[0], 4), adapter.stock[0])
+        self.assertIn("rollback refused", str(error.exception.__notes__))
+        self.assertEqual(guest.resumes, 0)
 
     def test_pitch_rejects_foreign_loader_before_mutation(self) -> None:
         for operation in (lambda g: pitch.set_limit(g, 88), pitch.revert):

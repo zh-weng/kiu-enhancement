@@ -83,6 +83,42 @@ class PublicExportTests(unittest.TestCase):
         first = export.build()
         self.assertEqual(export.build(), first)
 
+    def test_basic_export_is_exactly_the_five_original_sections(self):
+        full, full_manifest = export.build()
+        with mock.patch.object(Path, "read_bytes", side_effect=AssertionError("ROM access")):
+            basic, manifest = export.build_basic()
+        sections = re.findall(r"^\[(.*)\]$", basic, re.MULTILINE)
+        self.assertEqual(sections, list(export.BASIC_SECTIONS))
+        for name in sections:
+            pattern = rf"(?ms)^\[{re.escape(name)}\].*?(?=^\[|\Z)"
+            self.assertEqual(re.search(pattern, basic).group(), re.search(pattern, full).group())
+        self.assertEqual(set(manifest["features"]), {"60_fps", "widescreen"})
+        for name, feature in manifest["features"].items():
+            self.assertEqual(feature, full_manifest["features"][name])
+        self.assertEqual(manifest["generated_cheat"], export.TITLE_ID + ".txt")
+        self.assertNotIn("excluded", manifest)
+        export.validate_cheat_text(basic, expected_sections=5)
+
+    def test_basic_cli_writes_only_fps_and_widescreen(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output, manifest_path = Path(directory) / "basic.txt", Path(directory) / "patches.json"
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(export.main(["--basic", "--output", str(output),
+                                              "--manifest", str(manifest_path)]), 0)
+            text, manifest = export.build_basic()
+            self.assertEqual(output.read_text(encoding="utf-8"), text)
+            self.assertEqual(json.loads(manifest_path.read_text(encoding="utf-8")), manifest)
+
+    def test_basic_optional_image_checks_only_the_selected_sites(self):
+        image = mock.Mock(spec=Path)
+        with mock.patch.object(export, "verify_image") as verify:
+            export.build_basic(image)
+        groups, checked_image = verify.call_args.args
+        caves, entries = export.fps_patches()
+        self.assertEqual(groups, [caves + entries, export.widescreen_patches(16 / 9),
+                                  export.widescreen_patches(21 / 9)])
+        self.assertIs(checked_image, image)
+
     def test_cli_writes_text_and_metadata_without_rom(self):
         with tempfile.TemporaryDirectory() as directory:
             text_path = Path(directory) / "cheats" / "kiu.txt"

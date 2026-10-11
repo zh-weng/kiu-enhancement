@@ -131,7 +131,7 @@ def status(gdb: GdbClient) -> dict[str, object]:
     }
 
 
-def set_limit(gdb: GdbClient, degrees: float, force: bool = False) -> dict[str, object]:
+def set_limit(gdb: GdbClient, degrees: float, force: bool = False, *, resume: bool = True) -> dict[str, object]:
     if not math.isfinite(degrees) or degrees <= 0:
         raise ValueError("the limit has to be positive")
     if degrees > SAFE_MAX_DEGREES and not force:
@@ -145,7 +145,8 @@ def set_limit(gdb: GdbClient, degrees: float, force: bool = False) -> dict[str, 
     gdb.write_mem(LOWER_VA, struct.pack("<f", -radians))
     gdb.write_mem(UPPER_MOVE_VA, FORCED_UPPER_MOVE)
     gdb.write_mem(LOWER_MOVE_VA, FORCED_LOWER_MOVE)
-    gdb.cont_all()
+    if resume:
+        gdb.cont_all()
     written = status(gdb)
     if abs(written["limit_deg"] - degrees) > 0.01 or not written["bounds_forced"]:
         raise RuntimeError(f"write did not take: {written}")
@@ -162,14 +163,76 @@ def set_limit(gdb: GdbClient, degrees: float, force: bool = False) -> dict[str, 
     return written
 
 
-def revert(gdb: GdbClient) -> dict[str, object]:
+def revert(gdb: GdbClient, *, resume: bool = True) -> dict[str, object]:
     _check_live_sites(gdb)
     gdb.write_mem(UPPER_VA, STOCK_UPPER)
     gdb.write_mem(LOWER_VA, STOCK_LOWER)
     gdb.write_mem(UPPER_MOVE_VA, STOCK_UPPER_MOVE)
     gdb.write_mem(LOWER_MOVE_VA, STOCK_LOWER_MOVE)
-    gdb.cont_all()
+    if resume:
+        gdb.cont_all()
     return status(gdb)
+
+
+class SessionPatch:
+    """Opt-in launch adapter: never adopt or restore a different pitch setting."""
+
+    def __init__(self, degrees: float):
+        if not math.isfinite(degrees) or not 0 < degrees <= SAFE_MAX_DEGREES:
+            raise ValueError(f"Experimental pitch must be in (0, {SAFE_MAX_DEGREES:g}] degrees")
+        self.degrees = degrees
+        radians = math.radians(degrees)
+        self.sites = (UPPER_VA, LOWER_VA, UPPER_MOVE_VA, LOWER_MOVE_VA)
+        self.stock = (STOCK_UPPER, STOCK_LOWER, STOCK_UPPER_MOVE, STOCK_LOWER_MOVE)
+        self.installed = (struct.pack("<f", radians), struct.pack("<f", -radians),
+                          FORCED_UPPER_MOVE, FORCED_LOWER_MOVE)
+
+    def status(self, gdb):
+        _check_live_sites(gdb)
+        raw = tuple(gdb.read_mem(address, 4) for address in self.sites)
+        state = "stock" if raw == self.stock else "installed" if raw == self.installed else "unknown"
+        return {"state": state, "limit_deg": self.degrees, "build_sha256": CODE_SHA256}
+
+    def apply(self, gdb):
+        return self._transition(gdb, restore=False)
+
+    def revert(self, gdb):
+        return self._transition(gdb, restore=True)
+
+    def _transition(self, gdb, *, restore: bool):
+        source, target = ("installed", "stock") if restore else ("stock", "installed")
+        if self.status(gdb)["state"] != source:
+            raise RuntimeError(f"pitch: expected {source}; refusing unknown/mixed session bytes")
+        old, new = (self.installed, self.stock) if restore else (self.stock, self.installed)
+        touched = []
+        try:
+            for address, previous, replacement in zip(self.sites, old, new, strict=True):
+                touched.append((address, previous, replacement))
+                gdb.write_mem(address, replacement)
+                if gdb.read_mem(address, len(replacement)) != replacement:
+                    raise RuntimeError(f"pitch: write verification failed at 0x{address:08x}")
+            after = self.status(gdb)
+            if after["state"] != target:
+                raise RuntimeError("pitch: context changed during session transaction")
+        except Exception as exc:
+            for address, previous, replacement in reversed(touched):
+                try:
+                    current = gdb.read_mem(address, len(previous))
+                    if current == replacement:
+                        gdb.write_mem(address, previous)
+                        if gdb.read_mem(address, len(previous)) != previous:
+                            raise RuntimeError("rollback readback mismatch")
+                    elif current != previous:
+                        raise RuntimeError("foreign/partial bytes; rollback refused")
+                except Exception as rollback_error:
+                    exc.add_note(f"pitch rollback 0x{address:08x}: {rollback_error}; restart game")
+            raise
+        after["restored" if restore else "patched"] = True
+        after["sites"] = [
+            {"address": f"0x{address:08x}", "original_hex": original.hex(),
+             "replacement_hex": replacement.hex(), "build_sha256": CODE_SHA256}
+            for address, original, replacement in zip(self.sites, self.stock, self.installed, strict=True)]
+        return after
 
 
 def main() -> int:

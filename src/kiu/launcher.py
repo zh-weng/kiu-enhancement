@@ -17,7 +17,9 @@ ASPECTS = {"自动（全屏）": "auto", "原始 5:3": None, "16:9": 16 / 9, "21
 DEFAULTS = {"azahar": "", "game": "", "fps": True, "aspect": "自动（全屏）",
             "mouse": True, "sensitivity": 0.0025,
             "sync_layout": True, "display_consent": False,
-            "single_screen": True, "menu_route": False, "display_consent_version": 2}
+            "single_screen": True, "menu_route": False, "display_consent_version": 2,
+            "experimental_pitch_enabled": False, "experimental_pitch_degrees": 60.0,
+            "experimental_no_recenter": False, "experimental_button_dash": False}
 MOUSE_STATUS = {"connecting": "正在连接鼠标 hook…", "anchoring": "正在定位鼠标内存（首次可能约 30 秒）…",
                 "waiting": "增强已安装，等待进入战斗…", "active": "鼠标瞄准已启用 · {toggle} 可暂停",
                 "off": "鼠标已暂停 · {toggle} 可重新启用", "inactive": "鼠标待机：游戏失焦或战斗未活动",
@@ -54,7 +56,8 @@ def checked_preferences(data: object) -> dict:
             if not isinstance(data[key], str) or "\0" in data[key]:
                 raise ValueError("无效的文件路径")
             result[key] = data[key]
-    for key in ("fps", "mouse", "sync_layout", "display_consent", "single_screen", "menu_route"):
+    for key in ("fps", "mouse", "sync_layout", "display_consent", "single_screen", "menu_route",
+                "experimental_pitch_enabled", "experimental_no_recenter", "experimental_button_dash"):
         if key in data:
             if type(data[key]) is not bool:
                 raise ValueError("无效的开关设置")
@@ -69,11 +72,29 @@ def checked_preferences(data: object) -> dict:
     if type(sensitivity) not in (int, float) or not math.isfinite(sensitivity) or not 0 < sensitivity <= 1:
         raise ValueError("鼠标灵敏度应在 0 到 1 之间")
     result["sensitivity"] = float(sensitivity)
+    degrees = data.get("experimental_pitch_degrees", result["experimental_pitch_degrees"])
+    if type(degrees) not in (int, float) or not math.isfinite(degrees) or not 0 < degrees <= 89:
+        raise ValueError("俯仰角度应大于 0 且不超过 89°")
+    result["experimental_pitch_degrees"] = float(degrees)
     return result
 
 
 def load_preferences(path: Path) -> dict:
     return checked_preferences(json.loads(path.read_text(encoding="utf-8")))
+
+
+def options_from_preferences(values: dict) -> LauncherOptions:
+    """Map checked preferences identically for desktop and Gaming Mode."""
+    return LauncherOptions(
+        azahar=Path(values["azahar"]), game=Path(values["game"]),
+        fps=values["fps"], aspect=ASPECTS[values["aspect"]], mouse=values["mouse"],
+        sensitivity=values["sensitivity"], sync_layout=values["sync_layout"],
+        single_screen=values["single_screen"], menu_route=values["menu_route"],
+        experimental_pitch_degrees=(values["experimental_pitch_degrees"]
+                                    if values["experimental_pitch_enabled"] else None),
+        experimental_no_recenter=values["experimental_no_recenter"],
+        experimental_button_dash=values["experimental_button_dash"],
+    )
 
 
 def save_preferences(path: Path, values: dict) -> None:
@@ -109,19 +130,19 @@ class LauncherApp:
             warning = f"无法读取上次设置，将使用默认值：{exc}"
 
         root.title("KIU Launcher — " + ("Linux Preview" if sys.platform == "linux" else "Windows Preview"))
-        root.geometry("740x610")
-        root.minsize(700, 580)
+        root.geometry("740x730")
+        root.minsize(700, 700)
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
         if sys.platform == "win32":
             ttk.Style(root).theme_use("vista")
-        frame = ttk.Frame(root, padding=22)
+        frame = ttk.Frame(root, padding=18)
         frame.grid(sticky="nsew")
         frame.columnconfigure(1, weight=1)
         ttk.Label(frame, text="Kid Icarus: Uprising", font=("Segoe UI", 20, "bold")).grid(
             row=0, column=0, columnspan=3, sticky="w")
         ttk.Label(frame, text="官方 Azahar + USA v0 · 不修改 ROM · 可同步上屏显示比例").grid(
-            row=1, column=0, columnspan=3, sticky="w", pady=(4, 20))
+            row=1, column=0, columnspan=3, sticky="w", pady=(4, 12))
         self.azahar = tk.StringVar(value=values["azahar"])
         self.game = tk.StringVar(value=values["game"])
         self.editable = []
@@ -142,6 +163,10 @@ class LauncherApp:
         self.sync_layout = tk.BooleanVar(value=values["sync_layout"])
         self.single_screen = tk.BooleanVar(value=values["single_screen"])
         self.menu_route = tk.BooleanVar(value=values["menu_route"])
+        self.pitch_enabled = tk.BooleanVar(value=values["experimental_pitch_enabled"])
+        self.pitch_degrees = tk.StringVar(value=f"{values['experimental_pitch_degrees']:g}")
+        self.no_recenter = tk.BooleanVar(value=values["experimental_no_recenter"])
+        self.button_dash = tk.BooleanVar(value=values["experimental_button_dash"])
         self.display_consent = values["display_consent"]
         self.sensitivity = tk.StringVar(value=f"{values['sensitivity']:g}")
         fps = ttk.Checkbutton(options, text="真 60 FPS", variable=self.fps)
@@ -168,24 +193,40 @@ class LauncherApp:
         menu.grid(row=3, column=2, columnspan=2, sticky="w", pady=(10, 0))
         self.editable.extend((fps, mouse, aspect, sensitivity, sync_layout, single, menu))
 
+        experiments = ttk.LabelFrame(frame, text="相机与移动（实验，默认关闭）", padding=12)
+        experiments.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(0, 12))
+        pitch = ttk.Checkbutton(experiments, text="扩大陆战俯仰范围 ±", variable=self.pitch_enabled)
+        pitch.grid(row=0, column=0, sticky="w")
+        pitch_degrees = ttk.Entry(experiments, textvariable=self.pitch_degrees, width=5)
+        pitch_degrees.grid(row=0, column=1, padx=(4, 4))
+        ttk.Label(experiments, text="°（最多 89°）").grid(row=0, column=2, sticky="w")
+        recenter = ttk.Checkbutton(experiments, text="取消停火自动回正", variable=self.no_recenter)
+        recenter.grid(row=1, column=0, sticky="w", pady=(8, 0))
+        dash = ttk.Checkbutton(experiments, text="独立按键冲刺（禁用摇杆突推）", variable=self.button_dash)
+        dash.grid(row=1, column=1, columnspan=2, sticky="w", pady=(8, 0), padx=(12, 0))
+        ttk.Label(experiments, text="冲刺使用 Azahar Debug 键（默认 O）；Deck 可将 L4 映射到该键。"
+                  "按下一次触发，长按不重复。", wraplength=640).grid(
+            row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self.editable.extend((pitch, pitch_degrees, recenter, dash))
+
         actions = ttk.Frame(frame)
-        actions.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(0, 12))
+        actions.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(0, 12))
         self.start_button = ttk.Button(actions, text="开始游戏", command=self.start)
         self.start_button.pack(side="left")
         self.stop_button = ttk.Button(actions, text="停止并恢复增强", command=self.stop, state="disabled")
         self.stop_button.pack(side="left", padx=10)
         self.status = tk.StringVar(value="首次选择文件，以后直接开始。")
         ttk.Label(frame, textvariable=self.status, wraplength=640).grid(
-            row=6, column=0, columnspan=3, sticky="w", pady=(2, 8))
-        self.log = tk.Text(frame, height=5, wrap="word", state="disabled", relief="flat",
+            row=7, column=0, columnspan=3, sticky="w", pady=(2, 8))
+        self.log = tk.Text(frame, height=4, wrap="word", state="disabled", relief="flat",
                            font=("Segoe UI", 9))
-        self.log.grid(row=7, column=0, columnspan=3, sticky="nsew")
-        frame.rowconfigure(7, weight=1)
+        self.log.grid(row=8, column=0, columnspan=3, sticky="nsew")
+        frame.rowconfigure(8, weight=1)
         toggle = mouse_toggle_key()
         ttk.Label(frame, text=f"进入战斗且窗口有焦点时自动瞄准；{toggle} 暂停。即时读档前先停止增强。\n"
                   f"F9 复用 Azahar 上/下屏切换，切下屏前用 {toggle} 暂停瞄准。注入不重排菜单或修复触控。\n"
                   "改选项需停止并关闭 Azahar 后再开始；停止不撤销显示 preset。", wraplength=690).grid(
-            row=8, column=0, columnspan=3, sticky="w", pady=(12, 0))
+            row=9, column=0, columnspan=3, sticky="w", pady=(12, 0))
         root.protocol("WM_DELETE_WINDOW", self.close)
         if warning:
             self.report(warning)
@@ -232,13 +273,14 @@ class LauncherApp:
                 "aspect": self.aspect.get(), "sensitivity": float(self.sensitivity.get()),
                 "sync_layout": self.sync_layout.get(), "display_consent": self.display_consent,
                 "single_screen": self.single_screen.get(), "menu_route": self.menu_route.get(),
+                "experimental_pitch_enabled": self.pitch_enabled.get(),
+                "experimental_pitch_degrees": float(self.pitch_degrees.get()),
+                "experimental_no_recenter": self.no_recenter.get(),
+                "experimental_button_dash": self.button_dash.get(),
                 "display_consent_version": 2})
             if not values["azahar"] or not values["game"]:
                 raise ValueError("请先选择 Azahar 和自己的游戏文件。")
-            options = LauncherOptions(azahar=Path(values["azahar"]), game=Path(values["game"]),
-                fps=values["fps"], aspect=ASPECTS[values["aspect"]], mouse=values["mouse"],
-                sensitivity=values["sensitivity"], sync_layout=values["sync_layout"],
-                single_screen=values["single_screen"], menu_route=values["menu_route"])
+            options = options_from_preferences(values)
             validate_options(options)
             if values["sync_layout"] and not values["display_consent"]:
                 if not messagebox.askokcancel("保存 Azahar 显示 preset",
@@ -316,12 +358,15 @@ def main(argv=None) -> int:
     if args.self_test:
         root.withdraw()
         from .patches import patch_aim_request, pin_reticle
-        from .experimental import menu_render_pass
+        from .experimental import menu_render_pass, patch_pitch_limit, patch_no_recenter, patch_button_dash
         patch_aim_request.assemble_hook()
         pin_reticle.assemble_hook()
         pin_reticle.assemble_late_hook()
         if len(menu_render_pass.PRE_CAVE_BYTES) != menu_render_pass.CAVE_SIZE:
             raise RuntimeError("Invalid bundled menu hook")
+        patch_pitch_limit.SessionPatch(60)
+        if not patch_no_recenter.PATCH_SITES or not patch_button_dash.PATCH_SITES:
+            raise RuntimeError("Missing bundled camera/movement patches")
         root.update_idletasks()
         root.destroy()
     else:

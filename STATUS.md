@@ -1,6 +1,6 @@
 # 当前状态
 
-更新：2026-10-06。以实际源码与测试为依据；本轮 Launcher 整理和发布检查不代表新增模拟器战斗验收。
+更新：2026-10-10。以实际源码与测试为依据；启动和字节检查不代表新增模拟器战斗验收。
 
 唯一支持 USA v0 / `0004000000030100` / `CTR-P-AKDE`，完整 CCI 与代码 SHA256 见 `manifests/title.json`。
 
@@ -12,7 +12,9 @@
 | 单屏全屏 / aspect 同步 | preview，新增实机验收待补 | 默认 SingleScreen + -f；自动匹配主显示器比例，指定比例留边；双屏 Custom 可选 |
 | 原生鼠标 | Windows preview，完整回归待补 | 陆战 rotation request、空战 reticle；Raw Input + process-memory |
 | 菜单移上屏 | Launcher 可选实验开关，默认关闭 | 游戏 render-pass 路由；二维铺满和触控未完成；停止前检查 pass/cave 执行边界 |
-| 俯仰修改 | 实验，不进入 Launcher | 下游 limiter 仍需确认 |
+| 俯仰修改 | Launcher 实验开关与角度输入，默认关闭 | 桌面 / 游戏模式共用设置，字节预检及 owned 恢复；下游 limiter 仍需确认 |
+| 停火自动回正取消 | Launcher 可选；静态定位与离线回归完成，实战待验证 | 仅 NOP 闲置相机两处角度写入；默认关闭，owned 恢复 |
+| 独立按钮 dash | Launcher 可选；原始指纹与离线指令回归完成，实战待验证 | HID Debug → native pressed 请求；关闭摇杆突推，两种队列模式统一，默认关闭 |
 | Linux Launcher 与鼠标 | Steam Deck Desktop / Gaming Mode 源码 preview | XI2 + process_vm + Gamescope；Steam 直接启动、全屏与焦点、安装和 owned 恢复已跑通，物理战斗输入待用户验收 |
 | macOS Launcher 与鼠标 | 尚未实现 | 平台无关核心、ABI 和后端契约已保留 |
 
@@ -36,9 +38,21 @@ Steam Deck 已部署源码 Launcher 和并存的官方 Azahar 2126.1.1；原 212
 Linux 后端的断线重连空档已补有界等待和确定性回归；399 个本地测试通过，Deck 无 ROM 测试另有 Windows-only 跳过项。
 新增 Steam 游戏模式入口直接启动 headless session，不弹 Tk。实际 Gamescope 的 `gamescope-wl`、游戏 display 与控制 display 已识别；
 焦点匹配、1280×800 Vulkan 全屏 canvas、XI2 2.2 相对 XTEST 位移输入已核对，停止后四项补丁核对为 stock。
-Steam Input 需为该入口选择 Gamepad with Mouse Trackpad；建议 R4=F12、L4=本 profile 的 Ctrl+Tab。
+Steam Input 需为该入口选择 Gamepad with Mouse Trackpad；鼠标暂停和上下屏切换应单独绑定。
+当前独立 dash 试用将 L4 设为 O，对应本 Azahar profile 的 Debug 输入；Launcher 不自动改键。
 尚未验证实际鼠标/触摸板战斗、长时间运行、读档或多显示器；合成位移测试不是物理触控板验收。
 独立配置和启动方式见 README 的 Linux 部分；这些基础检查不算新增战斗验收。
+
+2026-10-10 按用户要求将 Deck 增强独立 profile 提到 4×，并为现有游戏模式入口显式启用 ±60° 陆战俯仰实验。
+本地 407 项测试通过；Deck 407 项通过（69 项跳过）。新会话完整游戏验证后，五项补丁均核对为 installed，
+俯仰四处 live 字节与指定值完全一致，画布为 1280×800；原 EmuDeck 配置摘要不变。
+4× 稳定 60 帧和最终渲染相机角度尚未验收，不把启动/内存边界检查视为战斗效果证明。
+
+相机与移动三项实验已整合到桌面 Launcher，Windows / Linux 使用同一设置映射，
+Steam 游戏模式直接读取保存的选择；旧版偏好文件兼容，新增选项默认关闭。
+旧私有 marker 不再控制启动，CLI 参数保留为显式覆盖。不会因升级重启当前游戏或更改模拟器键位。
+本次整合 442 项本地测试通过，源码 GUI、冻结 EXE 自检与源码分发白名单检查通过；
+三项新增实验仍未完成实战验收。更新时 Deck SSH 连接超时，新版尚未同步到设备。
 
 ## 已知限制
 

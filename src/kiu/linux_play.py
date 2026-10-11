@@ -6,11 +6,12 @@ display preset. This entry reads those preferences without opening a Tk window.
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from pathlib import Path
 import signal
 import sys
 
-from .launcher import ASPECTS, load_preferences, settings_path
+from .launcher import load_preferences, options_from_preferences, settings_path
 from .launcher_core import LauncherOptions, LauncherSession, validate_options
 
 
@@ -23,12 +24,7 @@ def load_options(path: Path) -> LauncherOptions:
         )
     if not values["azahar"] or not values["game"]:
         raise ValueError("Select Azahar and your own game in the desktop KIU Launcher first")
-    options = LauncherOptions(
-        azahar=Path(values["azahar"]), game=Path(values["game"]),
-        fps=values["fps"], aspect=ASPECTS[values["aspect"]], mouse=values["mouse"],
-        sensitivity=values["sensitivity"], sync_layout=values["sync_layout"],
-        single_screen=values["single_screen"], menu_route=values["menu_route"],
-    )
+    options = options_from_preferences(values)
     validate_options(options)
     return options
 
@@ -37,6 +33,12 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--settings", type=Path, default=None,
                         help="the local preferences saved by the desktop Launcher")
+    parser.add_argument("--experimental-pitch-degrees", type=float, default=None,
+                        help="opt-in ground pitch boundary; rendered range remains experimental (1-89 degrees)")
+    parser.add_argument("--experimental-no-recenter", action="store_true",
+                        help="opt-in cancellation of ground battle idle camera recentering; unvalidated preview")
+    parser.add_argument("--experimental-button-dash", action="store_true",
+                        help="opt-in HID Debug-button dash instead of stick flick; bind button_debug in Azahar")
     args = parser.parse_args(argv)
     try:
         if sys.platform != "linux":
@@ -46,6 +48,15 @@ def main(argv=None) -> int:
             options = load_options(path)
         except FileNotFoundError as exc:
             raise RuntimeError("No saved preferences; configure this profile with the desktop KIU Launcher first") from exc
+        if args.experimental_pitch_degrees is not None:
+            options = replace(options, experimental_pitch_degrees=args.experimental_pitch_degrees)
+            validate_options(options)
+        if args.experimental_no_recenter:
+            options = replace(options, experimental_no_recenter=True)
+            validate_options(options)
+        if args.experimental_button_dash:
+            options = replace(options, experimental_button_dash=True)
+            validate_options(options)
         session = LauncherSession(options, lambda text: print(f"[kiu] {text}", flush=True))
         previous = {}
 

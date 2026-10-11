@@ -51,6 +51,14 @@ The mouse mailbox still has timing races. Savestates can restore hooks/gates or 
 
 ## Preview status
 
+The Launcher has three independent camera/movement experiment controls, all off by default:
+
+- **Expanded ground pitch:** choose a symmetric boundary (default ±60°, maximum ±89°). The final rendered range still needs validation; angles near the poles can destabilize the camera basis.
+- **Disable idle recenter:** removes only two ground-battle automatic angle writes, not firing, reticle visibility, or forced camera modes.
+- **Dedicated dash:** disables stick-flick dash and requests the game's native dash on a press of Azahar's **Debug** input (default O; map Steam Deck L4 to O). Holding does not repeat; releasing does not immediately end an existing dash. Direction, stamina, and game restrictions remain unchanged. The Launcher does not alter key bindings.
+
+These choices are saved locally and reused by Gaming Mode. To disable one, stop enhancements, close Azahar, uncheck it, and start again. Restoration affects only patches installed by that session. See [technical findings](docs/KNOWLEDGE.md) for exact bytes and validation limits.
+
 | Feature | Current status |
 | --- | --- |
 | True 60 FPS and 16:9 / 21:9 battle widescreen | Implemented; emulator runtime verification is recorded |
@@ -58,6 +66,7 @@ The mouse mailbox still has timing races. Savestates can restore hooks/gates or 
 | Single-screen fullscreen / aspect synchronization | Preview: consent-based persistent presets; offline regressions, with additional in-game validation still needed |
 | Native mouse aiming | Preview: camera rotation on the ground, reticle positioning in the air |
 | Menu-to-upper-screen injection | Opt-in experiment; full-width 2D layout and touch interaction remain unfinished |
+| Expanded ground pitch / no idle recenter / dedicated dash | Launcher opt-ins, off by default; byte-checked patches and offline regressions, live battle validation pending |
 | Linux launcher and mouse backend | Source preview for X11/XWayland; no system security-policy changes |
 | macOS launcher and mouse backend | Not implemented; platform-neutral core and interfaces are retained |
 
@@ -96,7 +105,9 @@ steamos-add-to-steam "$PWD/scripts/start-steamdeck.sh"
 
 Rename the new non-Steam entry as desired, then play it from Gaming Mode. It opens only Azahar, not the desktop Launcher. Startup diagnostics are in `local/steamdeck.log`. A saved, authorized display preset is required; this entry does not grant consent silently.
 
-Choose Steam Input's **Gamepad with Mouse Trackpad** template for the entry. Suggested back buttons: **R4 = F12** (aim toggle), **L4 = the configured Swap Screens hotkey**. The tested dedicated Azahar profile uses **Ctrl+Tab** for screen swapping. Pause aiming before switching down, then resume on returning to the upper screen. Steam's default gamepad template does not provide the required mouse trackpad mapping.
+Desktop and Gaming Mode share the saved Launcher options, including the camera/movement experiments described below. The script no longer reads the old `local/ground-pitch-degrees.txt`, `local/no-recenter.enabled`, or `local/button-dash.enabled` markers. When upgrading an older trial installation, select those options once in the desktop Launcher. Explicit `--experimental-pitch-degrees 60`, `--experimental-no-recenter`, and `--experimental-button-dash` CLI overrides remain supported; omit them to follow the saved choices.
+
+Choose Steam Input's **Gamepad with Mouse Trackpad** template for the entry. With dedicated dash enabled, map **L4 = O** and bind O to Azahar's **Debug** input; O is Azahar's default Debug key. Keep screen swapping and mouse pause on separate buttons: the tested dedicated profile uses **Ctrl+Tab** for swapping and **F12** for aim pause. Existing Steam Input bindings are not rewritten by the Launcher. Pause aiming before switching down, then resume on returning to the upper screen. Steam's default gamepad template does not provide the required mouse trackpad mapping.
 
 Linux uses **F12** for mouse aiming, because stock Azahar uses F4 to pause emulation. Run Azahar from this launcher: normal Linux process-memory permissions permit access to its own child, not an unrelated emulator started elsewhere. No root, read-only-root disablement or ptrace-policy change is needed. Savestate recovery and mailbox timing limitations remain unchanged.
 

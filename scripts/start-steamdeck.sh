@@ -9,4 +9,5 @@ fi
 export XDG_CONFIG_HOME="${KIU_PROFILE_CONFIG:-$KIU_ROOT/local/profile/config}"
 export QT_QPA_PLATFORM=xcb
 mkdir -p "$KIU_ROOT/local"
+# Desktop and Gaming Mode share launcher.json; explicit CLI overrides still work.
 exec "$KIU_ROOT/.venv/bin/python" -m kiu.linux_play "$@" >>"$KIU_ROOT/local/steamdeck.log" 2>&1

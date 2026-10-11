@@ -33,8 +33,11 @@ class LauncherBuildTests(unittest.TestCase):
         self.assertIn("--windowed", command)
         self.assertNotIn("--onefile", command)
         self.assertIn("kiu_launcher_payloads", command)
-        for name in ("keystone", "kiu.experimental.patch_pitch_limit", "kiu.export_cheats", "tools"):
+        for name in ("keystone", "kiu.export_cheats", "tools"):
             self.assertIn(name, command)
+        for name in ("kiu.experimental.patch_pitch_limit", "kiu.experimental.patch_no_recenter",
+                     "kiu.experimental.patch_button_dash"):
+            self.assertNotIn(name, launcher.EXCLUDED_MODULES)
         self.assertNotIn("kiu.cli", command)
         for flag in ("--workpath", "--specpath", "--distpath"):
             self.assertIn("local", Path(command[command.index(flag) + 1]).parts)

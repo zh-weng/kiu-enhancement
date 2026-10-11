@@ -29,7 +29,7 @@ BUILD_TOOLS = ROOT / "local/build-tools"
 PLAYER_TEXT = ("README.md", "STATUS.md", "LICENSE", *source_release.DOC_FILES,
                *source_release.MANIFEST_FILES)
 FORBIDDEN_SUFFIXES = {".cci", ".3ds", ".cia", ".cxi", ".sav", ".bin", ".3gx"}
-EXCLUDED_MODULES = ("keystone", "kiu.experimental.patch_pitch_limit", "kiu.export_cheats", "tools")
+EXCLUDED_MODULES = ("keystone", "kiu.export_cheats", "tools")
 
 
 class LauncherBuildError(ValueError):
